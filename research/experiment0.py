@@ -30,7 +30,13 @@ def preprocess(text):
             text = [ps.stem(word) for word in text if not word in set(stopwords.words('english'))]
             return ' '.join(text)
         
-dataset = pandas.read_csv('interview1.csv', encoding='ISO-8859-1')
+dataset1 = pandas.read_csv('interview1.csv', encoding='ISO-8859-1')
+dataset2 = pandas.read_csv('interview2.csv', encoding='ISO-8859-1')
+dataset3 = pandas.read_csv('interview3.csv', encoding='ISO-8859-1')
+
+dataset = pandas.concat([dataset1, dataset2, dataset3])
+#Reset index otherwise during the loop below we select multiple rows (pandas.concat results in repeated indices)
+dataset = dataset.reset_index(drop=True)
 
 querycorpus = []
 for i in range(0, len(dataset)):
@@ -69,13 +75,12 @@ def answer(newquery, k):
         selected = related_docs_indices[:k]
        
 #        return dataset.iloc[selected[0]]['A']
-        print("\n Cosine Similarities:", sorted_freq, "\n")
-        return dataset.iloc[selected,:k]
-    
+        return dataset.iloc[selected[0]]['A'], dataset.iloc[selected,:(k-1)]   
+        print("\n Cosine Similarities:", sorted_freq[:k], "\n")
     else:
         indeces = numpy.where(numpy.roll(sorted_freq,1)!=sorted_freq)
         selected = related_docs_indices[:indeces[0][indeces[0]>=k][0]]
     
 #        return dataset.iloc[selected[0]]['A']
-        print("\n Cosine Similarities:", sorted_freq, "\n")
-        return dataset.iloc[selected,:k]
+        return dataset.iloc[selected[0]]['A'], dataset.iloc[selected,:(k-1)]
+        print("\n Cosine Similarities:", sorted_freq[:k], "\n")
