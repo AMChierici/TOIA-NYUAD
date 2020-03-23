@@ -467,12 +467,27 @@ for testex in range(10):
     print("Test Question: ", test_df.Context[testex ])
     print("Train Question: ", train_df.Context[Qid])
 
-print("TF-IDF Dialogue")    
-for testex in range(34):
-    Qid = np.argsort(y[testex ], axis=0)[::-1][0]
-    print("Question (Test Set): ", test_df.Context[testex])
-    print("Answer (KB'): ", train_df.Utterance[Qid])
-    print("(Cosine Similarity: {})".format(np.sort(y[testex], axis=0)[::-1][0]))
+q = []
+GA = []
+A1 = []
+A2 = []
+A3 = []
+A4 = []
+A5 = []
+for testex in range(len(test_df)):
+    question = test_df.Context[testex]
+    Qids = np.argsort(y[testex], axis=0)[::-1][:5]
+    As = train_df.Utterance[Qids]
+    RANKs = np.sort(y[testex], axis=0)[::-1][:5]
+    q.append(question)
+    GA.append(multiturndialogues[multiturndialogues.Q == question].A.iloc[0])
+    A1.append(As.iloc[0] + " (rank={})".format(RANKs[0]))
+    A2.append(As.iloc[1] + " (rank={})".format(RANKs[1]))
+    A3.append(As.iloc[2] + " (rank={})".format(RANKs[2]))
+    A4.append(As.iloc[3] + " (rank={})".format(RANKs[3]))
+    A5.append(As.iloc[4] + " (rank={})".format(RANKs[4]))
+TFIDFdialoguesout = pd.DataFrame({'q':q, 'GA':GA, '1A':A1, '2A':A2, '3A':A3, '4A':A4, '5A':A5})   
+TFIDFdialoguesout.to_csv('TF-IDF dialogues.csv', encoding='utf-8')   
 
 
 ### InferSent ###
