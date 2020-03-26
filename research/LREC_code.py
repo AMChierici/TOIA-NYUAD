@@ -490,6 +490,97 @@ TFIDFdialoguesout = pd.DataFrame({'q':q, 'GA':GA, '1A':A1, '2A':A2, '3A':A3, '4A
 TFIDFdialoguesout.to_csv('TF-IDF dialogues.csv', encoding='utf-8')   
 
 
+
+###### BM25 ######
+# Train BM25 predictor q-q relevance
+corpus = list(train_df.Context.values)
+
+tokenized_corpus = [doc.split(" ") for doc in corpus]
+bm25 = BM25Okapi(tokenized_corpus)
+
+y = [bm25.get_scores(valid_df.Context[x].split(" ")) for x in range(len(valid_df))]
+maxscore = max([max(scores) for scores in y])
+ans = []
+nonans = []
+thresholds = []
+for thr in np.arange(0.0, maxscore, maxscore/20):
+    ans.append(evaluate_recall_thr(y, valid_df.WOzAnswers.values, k=1, thr=thr)[1])
+    nonans.append(evaluate_recall_thr(y, valid_df.WOzAnswers.values, k=1, thr=thr)[2])
+    thresholds.append(thr)
+pred_thr = thresholds[np.argsort([sum(x) for x in zip([l/train_ans*(1-prop_train_nonans) for l in ans], [l/train_nonans*prop_train_nonans for l in nonans])], axis=0)[::-1][0]]
+
+# Evaluate BM25 predictor
+for i in range(3):
+    for thr in np.arange(0.0, maxscore, maxscore/20):
+        print("Recall@1 for thr={}: {:g}".format(thr, evaluate_recall_thr(y, valid_df.WOzAnswers.values, k=1, thr=thr)[i]))
+# Test BM25 predictor
+y = [bm25.get_scores(test_df.Context[x].split(" ")) for x in range(len(test_df))]
+for i in range(3):
+    for n in [1, 2, 5, 10, 20]:
+        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, test_df.WOzAnswers.values, n, thr=pred_thr)[i]))
+        
+## Evaluate BM25 predictor Q-A relevance --so crap results
+# corpus = list(train_df.Utterance.values)
+
+# tokenized_corpus = [doc.split(" ") for doc in corpus]
+# bm25 = BM25Okapi(tokenized_corpus)
+
+# y = [bm25.get_scores(valid_df.Context[x].split(" ")) for x in range(len(valid_df))]
+# maxscore = max([max(scores) for scores in y])
+# ans = []
+# nonans = []
+# thresholds = []
+# for thr in np.arange(0.0, maxscore, maxscore/20):
+#     ans.append(evaluate_recall_thr(y, valid_df.WOzAnswers.values, k=1, thr=thr)[1])
+#     nonans.append(evaluate_recall_thr(y, valid_df.WOzAnswers.values, k=1, thr=thr)[2])
+#     thresholds.append(thr)
+# pred_thr = thresholds[np.argsort([sum(x) for x in zip([l/train_ans*(1-prop_train_nonans) for l in ans], [l/train_nonans*prop_train_nonans for l in nonans])], axis=0)[::-1][0]]
+
+# # Evaluate BM25 predictor
+# for i in range(3):
+#     for thr in np.arange(0.0, maxscore, maxscore/20):
+#         print("Recall@1 for thr={}: {:g}".format(thr, evaluate_recall_thr(y, valid_df.WOzAnswers.values, k=1, thr=thr)[i]))
+# # Test BM25 predictor
+# y = [bm25.get_scores(test_df.Context[x].split(" ")) for x in range(len(test_df))]
+# for i in range(3):
+#     for n in [1, 2, 5, 10, 20]:
+#         print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, test_df.WOzAnswers.values, n, thr=0)[i]))
+        
+for testex in range(10):
+    tmp = np.argsort(y[testex ], axis=0)[::-1][:3]
+    print(tmp)
+    print(np.sort(y[testex], axis=0)[::-1][:3])
+    
+    Qid = tmp[0]
+    print("Test Question: ", test_df.Context[testex ])
+    print("Train Question: ", train_df.Context[Qid])
+
+q = []
+GA = []
+A1 = []
+A2 = []
+A3 = []
+A4 = []
+A5 = []
+for testex in range(len(test_df)):
+    question = test_df.Context[testex]
+    Qids = np.argsort(y[testex], axis=0)[::-1][:5]
+    As = train_df.Utterance[Qids]
+    RANKs = np.sort(y[testex], axis=0)[::-1][:5]
+    q.append(question)
+    GA.append(multiturndialogues[multiturndialogues.Q == question].A.iloc[0])
+    A1.append(As.iloc[0] + " (rank={})".format(RANKs[0]))
+    A2.append(As.iloc[1] + " (rank={})".format(RANKs[1]))
+    A3.append(As.iloc[2] + " (rank={})".format(RANKs[2]))
+    A4.append(As.iloc[3] + " (rank={})".format(RANKs[3]))
+    A5.append(As.iloc[4] + " (rank={})".format(RANKs[4]))
+BM25dialoguesout = pd.DataFrame({'q':q, 'GA':GA, '1A':A1, '2A':A2, '3A':A3, '4A':A4, '5A':A5})   
+BM25dialoguesout.to_csv('BM25 dialogues.csv', encoding='utf-8')   
+
+
+
+
+
 ### InferSent ###
 model_version = 1
 MODEL_PATH = "InferSent/encoder/infersent%s.pickle" % model_version
