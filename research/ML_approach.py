@@ -774,3 +774,153 @@ for answer, ranking in zip(np.take(test_df.Utterance.values, list(np.argsort(ran
           "\n [Rank value: ", math.floor(ranking*1000), "]"
       )
     
+### Using CNN - opt2 embeddings
+
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+  
+stopwords = [ "a", "about", "above", "after", "again", "against", "all", "am", "an", "and", "any", "are", "as", "at", "be", "because", "been", "before", "being", "below", "between", "both", "but", "by", "could", "did", "do", "does", "doing", "down", "during", "each", "few", "for", "from", "further", "had", "has", "have", "having", "he", "he'd", "he'll", "he's", "her", "here", "here's", "hers", "herself", "him", "himself", "his", "how", "how's", "i", "i'd", "i'll", "i'm", "i've", "if", "in", "into", "is", "it", "it's", "its", "itself", "let's", "me", "more", "most", "my", "myself", "nor", "of", "on", "once", "only", "or", "other", "ought", "our", "ours", "ourselves", "out", "over", "own", "same", "she", "she'd", "she'll", "she's", "should", "so", "some", "such", "than", "that", "that's", "the", "their", "theirs", "them", "themselves", "then", "there", "there's", "these", "they", "they'd", "they'll", "they're", "they've", "this", "those", "through", "to", "too", "under", "until", "up", "very", "was", "we", "we'd", "we'll", "we're", "we've", "were", "what", "what's", "when", "when's", "where", "where's", "which", "while", "who", "who's", "whom", "why", "why's", "with", "would", "you", "you'd", "you'll", "you're", "you've", "your", "yours", "yourself", "yourselves" ]
+print(len(stopwords))
+# Expected Output
+# 153
+ 
+training_corpus = [] 
+for question, answer in zip(train_df.Context.values, train_df.Utterance.values):
+    sentence = question.lower() + " " + answer.lower()
+    for word in stopwords:
+            token = " " + word + " "
+            sentence = sentence.replace(token, " ")
+            sentence = sentence.replace("  ", " ")
+    training_corpus.append(sentence)
+    
+validation_corpus = [] 
+for question, answer in zip(valid_df.Context.values, valid_df.Utterance.values):
+    validation_corpus.append(question.lower() + " " + answer.lower())
+
+test_corpus = [] 
+for question, answer in zip(test_df.Context.values, test_df.Utterance.values):
+    sentence = question.lower() + " " + answer.lower()
+    for word in stopwords:
+            token = " " + word + " "
+            sentence = sentence.replace(token, " ")
+            sentence = sentence.replace("  ", " ")
+    test_corpus.append(sentence)
+
+vocab_size = 1000
+embedding_dim = 16
+max_length = 120
+trunc_type='post'
+padding_type = 'post'
+oov_tok = "<OOV>"
+
+tokenizer = Tokenizer(num_words = vocab_size, oov_token=oov_tok)
+tokenizer.fit_on_texts(training_corpus)
+word_index = tokenizer.word_index
+sequences = tokenizer.texts_to_sequences(training_corpus)
+padded = pad_sequences(sequences, maxlen=max_length, truncating=trunc_type, padding=padding_type)
+
+validation_sequences = tokenizer.texts_to_sequences(validation_corpus)
+validation_padded = pad_sequences(validation_sequences, maxlen=max_length, truncating=trunc_type, padding=padding_type)
+
+testing_sequences = tokenizer.texts_to_sequences(test_corpus)
+testing_padded = pad_sequences(testing_sequences, maxlen=max_length, truncating=trunc_type, padding=padding_type)
+
+reverse_word_index = dict([(value, key) for (key, value) in word_index.items()])
+
+def decode_qapair(text):
+    return ' '.join([reverse_word_index.get(i, '?') for i in text])
+
+print(decode_qapair(padded[3]))
+print(training_corpus[3])
+
+model = tf.keras.Sequential([
+    tf.keras.layers.Embedding(vocab_size, embedding_dim, input_length=max_length),
+    tf.keras.layers.GlobalAveragePooling1D(),
+    # tf.keras.layers.Dense(1024, activation='relu'),
+    tf.keras.layers.Dense(24, activation='relu'),
+    # tf.keras.layers.Dense(64, activation='relu'),
+    tf.keras.layers.Dense(1, activation='sigmoid')
+])
+model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+model.summary()
+
+num_epochs = 100
+model.fit(padded, train_df.Label.values, epochs=num_epochs, validation_data=(testing_padded, test_df.Label.values), callbacks=[callbacks])
+
+import matplotlib.pyplot as plt
+
+
+def plot_graphs(history, string):
+  plt.plot(history.history[string])
+  plt.plot(history.history['val_'+string])
+  plt.xlabel("Epochs")
+  plt.ylabel(string)
+  plt.legend([string, 'val_'+string])
+  plt.show()
+  
+plot_graphs(history, "accuracy")
+plot_graphs(history, "loss")
+
+e = model.layers[0]
+weights = e.get_weights()[0]
+print(weights.shape) # shape: (vocab_size, embedding_dim)
+
+import io
+
+out_v = io.open('vecs.tsv', 'w', encoding='utf-8')
+out_m = io.open('meta.tsv', 'w', encoding='utf-8')
+for word_num in range(1, vocab_size):
+  word = reverse_word_index[word_num]
+  embeddings = weights[word_num]
+  out_m.write(word + "\n")
+  out_v.write('\t'.join([str(x) for x in embeddings]) + "\n")
+out_v.close()
+out_m.close()
+
+y_valid = valid_df.Label.values
+y_cnn_probs = model.predict(validation_padded)
+y_cnn = [1 if i>.5 else 0 for i in y_cnn_probs]
+TN, FP, FN, TP = confusion_matrix(y_valid, y_cnn, labels=[1,0]).ravel()
+thr = TP/(2*TP + FN + FP)
+print("\n CM: ", confusion_matrix(y_valid, y_cnn, labels=[1,0]),
+    "\n Accuracy: ", accuracy_score(y_valid, y_cnn),
+    "\n Precision: ", precision_score(y_valid, y_cnn),
+    "\n Recall: ", recall_score(y_valid, y_cnn),
+    "\n F1: ", f1_score(y_valid, y_cnn),
+)
+
+y_test = test_df.Label.values
+y_cnn_probs = model.predict(testing_padded)
+y_cnn = [1 if i>thr else 0 for i in y_cnn_probs]
+print("\n CM: ", confusion_matrix(y_test, y_cnn, labels=[1,0]),
+    "\n Accuracy: ", accuracy_score(y_test, y_cnn),
+    "\n Precision: ", precision_score(y_test, y_cnn),
+    "\n Recall: ", recall_score(y_test, y_cnn),
+    "\n F1: ", f1_score(y_test, y_cnn),
+)
+
+
+input_text = "How do people commute between campus and the city?"
+
+answers = np.unique(test_df.Utterance.values)
+predictions = []
+for A in answers:
+    sentence = input_text + " " + A
+    for word in stopwords:
+            token = " " + word + " "
+            sentence = sentence.replace(token, " ")
+            sentence = sentence.replace("  ", " ")
+    predictions.append(sentence)
+
+sequences = tokenizer.texts_to_sequences(predictions)
+padded = pad_sequences(sequences, maxlen=max_length, truncating=trunc_type, padding=padding_type)
+   
+k=20
+rankings = model.predict(padded)
+
+print("Question: ", input_text)
+for answer, ranking in zip(np.take(answers, list(np.argsort(rankings, axis=0)[::-1][:k])), np.sort(rankings, axis=0)[::-1][:k]):
+    print(
+          "\n Answer: ", answer[0],
+          "\n [Rank value: ", ranking*1000, "]"
+      )
