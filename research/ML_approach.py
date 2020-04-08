@@ -845,7 +845,7 @@ model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy']
 model.summary()
 
 num_epochs = 100
-model.fit(padded, train_df.Label.values, epochs=num_epochs, validation_data=(testing_padded, test_df.Label.values), callbacks=[callbacks])
+history = model.fit(padded, train_df.Label.values, epochs=num_epochs, validation_data=(testing_padded, test_df.Label.values), callbacks=[callbacks])
 
 import matplotlib.pyplot as plt
 
