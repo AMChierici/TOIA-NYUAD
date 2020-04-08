@@ -493,6 +493,8 @@ TFIDFdialoguesout.to_csv('TF-IDF dialogues.csv', encoding='utf-8')
 
 ###### BM25 ######
 # Train BM25 predictor q-q relevance
+from rank_bm25 import BM25Okapi
+
 corpus = list(train_df.Context.values)
 
 tokenized_corpus = [doc.split(" ") for doc in corpus]
