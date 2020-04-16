@@ -17,14 +17,34 @@ from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.callbacks import EarlyStopping
 from sklearn.metrics import *
+import tensorflow as tf
+import tensorflow_hub as hub
+import tensorflow_text as text
+import numpy as np
+import tensorflow_text
+from rank_bm25 import BM25Okapi
+import matplotlib.pyplot as plt
+import io
+from helper_functions import *
 
+def allnull(somelist):
+    count=0
+    for i in somelist:
+        if pd.isnull(i):
+            count+=1
+    return count==len(somelist)
 
-class myCallback(tf.keras.callbacks.Callback):
-  def on_epoch_end(self, epoch, logs={}):
-    if(logs.get('accuracy')>0.99):
-      print("\nReached 99% accuracy so cancelling training!")
-      self.model.stop_training = True
+def decode_qapair(text, reverse_word_index):
+    return ' '.join([reverse_word_index.get(i, '?') for i in text])
 
+def plot_graphs(history, string):
+  plt.plot(history.history[string])
+  plt.plot(history.history['val_'+string])
+  plt.xlabel("Epochs")
+  plt.ylabel(string)
+  plt.legend([string, 'val_'+string])
+  plt.show()
+  
 knowledgebase = pd.read_csv('/Users/amc/Documents/TOIA-NYUAD/research/MargaritaCorpusKB.csv', encoding='utf-8')
 train_test_dialogues = pd.read_csv('/Users/amc/Documents/TOIA-NYUAD/research/DIALOGUES.csv', encoding='utf-8')
 
@@ -64,12 +84,6 @@ for i in range(len(train_df)):
 
 train_df.reset_index(level=None, drop=True, inplace=True)
 
-def allnull(somelist):
-    count=0
-    for i in somelist:
-        if pd.isnull(i):
-            count+=1
-    return count==len(somelist)
 
 Context, WOzAnswers, Labels= [], [], []
 KBanswers = list(np.unique(knowledgebase.Utterance.values))
@@ -123,6 +137,14 @@ for i in range(len(valid_df)):
 
 valid_df.reset_index(level=None, drop=True, inplace=True)
   
+
+class myCallback(tf.keras.callbacks.Callback):
+  def on_epoch_end(self, epoch, logs={}):
+    if(logs.get('accuracy')>0.99):
+      print("\nReached 99% accuracy so cancelling training!")
+      self.model.stop_training = True
+      
+      
 stopwords = ['', 'a', 'about', 'above', 'after', 'again', 'against', 'all',
        'am', 'an', 'and', 'any', 'are', 'as', 'at', 'be', 'because',
        'been', 'before', 'being', 'below', 'between', 'both', 'but', 'by',
@@ -184,9 +206,6 @@ validation_padded = pad_sequences(validation_sequences, maxlen=max_length, trunc
 
 reverse_word_index = dict([(value, key) for (key, value) in word_index.items()])
 
-def decode_qapair(text):
-    return ' '.join([reverse_word_index.get(i, '?') for i in text])
-
 print(decode_qapair(padded[3]))
 print(training_corpus[3])
 
@@ -205,25 +224,12 @@ num_epochs = 20
 callbacks = myCallback()
 history= model.fit(padded, train_df.Label.values, epochs=num_epochs, validation_data=(validation_padded, valid_df.Label.values), callbacks=[callbacks])
 
-import matplotlib.pyplot as plt
-
-
-def plot_graphs(history, string):
-  plt.plot(history.history[string])
-  plt.plot(history.history['val_'+string])
-  plt.xlabel("Epochs")
-  plt.ylabel(string)
-  plt.legend([string, 'val_'+string])
-  plt.show()
-  
 plot_graphs(history, "accuracy")
 plot_graphs(history, "loss")
 
 e = model.layers[0]
 weights = e.get_weights()[0]
 print(weights.shape) # shape: (vocab_size, embedding_dim)
-
-import io
 
 out_v = io.open('vecs.tsv', 'w', encoding='utf-8')
 out_m = io.open('meta.tsv', 'w', encoding='utf-8')
@@ -274,24 +280,21 @@ for answer, ranking in zip(np.take(KBanswers, list(np.argsort(rankings, axis=0)[
     
     
 # Now using pre-trained embeddings:
-import tensorflow as tf
-import tensorflow_hub as hub
-import numpy as np
-import tensorflow_text
 
-questions = ["What is your age?"]
-responses = ["I am 20 years old.", "good morning"]
-response_contexts = ["I will be 21 next year.", "great day."]
+# questions = ["What is your age?"]
+# responses = ["I am 20 years old.", "good morning"]
+# response_contexts = ["I will be 21 next year.", "great day."]
+##Normally context are sentences before/after the answer.
 
-module = hub.load('https://tfhub.dev/google/universal-sentence-encoder-qa/3')
+module = hub.load('./3') #https://tfhub.dev/google/universal-sentence-encoder-qa/3 ##downlaod at https://tfhub.dev/google/universal-sentence-encoder-qa/3
 
-question_embeddings = module.signatures['question_encoder'](
-            tf.constant(questions))
-response_embeddings = module.signatures['response_encoder'](
-        input=tf.constant(responses),
-        context=tf.constant(response_contexts))
+# question_embeddings = module.signatures['question_encoder'](
+#             tf.constant(questions))
+# response_embeddings = module.signatures['response_encoder'](
+#         input=tf.constant(responses),
+#         context=tf.constant(response_contexts))
 
-np.inner(question_embeddings, response_embeddings)
+# np.inner(question_embeddings, response_embeddings)
 
 training_corpus = [] 
 for question, answer in zip(train_df.Context.values, train_df.Utterance.values):
@@ -338,7 +341,7 @@ print("\n CM: ", np.array([[TP, FN], [FP, TN]]),
     "\n Accuracy: ", accuracy_score(y_valid, y_nnet),
     "\n Precision: ", precision_score(y_valid, y_nnet),
     "\n Recall: ", recall_score(y_valid, y_nnet),
-    "\n F1: ", f1_score(y_valid, y_nnet),
+    "\n F1: ", f1_score(y_valid, y_nnet),genade.co
 )
 thr = TP/(2*TP + FN + FP)
 y_nnet = [1 if i>thr else 0 for i in y_nnet_probs]
@@ -368,8 +371,6 @@ for answer, ranking in zip(np.take(KBanswers, list(np.argsort(rankings, axis=0)[
           "\n Answer: ", answer[0],
           "\n [Rank value: ", ranking*1000, "]"
       )
-
-from rank_bm25 import BM25Okapi
 
 pred_answers = np.take(KBanswers, list(np.argsort(rankings, axis=0)[::-1][:k]))
 pred_answers = [answer[0] for answer in pred_answers]
