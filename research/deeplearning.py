@@ -21,7 +21,6 @@ import tensorflow as tf
 import tensorflow_hub as hub
 import tensorflow_text as text
 import numpy as np
-import tensorflow_text
 from rank_bm25 import BM25Okapi
 import matplotlib.pyplot as plt
 import io
@@ -281,35 +280,33 @@ for answer, ranking in zip(np.take(KBanswers, list(np.argsort(rankings, axis=0)[
     
 # Now using pre-trained embeddings:
 
-# questions = ["What is your age?"]
-# responses = ["I am 20 years old.", "good morning"]
-# response_contexts = ["I will be 21 next year.", "great day."]
+questions = ["What is your age?"]
+responses = ["I am 20 years old.", "good morning"]
+response_contexts = ["I will be 21 next year.", "great day."]
 ##Normally context are sentences before/after the answer.
 
 module = hub.load('./3') #https://tfhub.dev/google/universal-sentence-encoder-qa/3 ##downlaod at https://tfhub.dev/google/universal-sentence-encoder-qa/3
 
-# question_embeddings = module.signatures['question_encoder'](
-#             tf.constant(questions))
-# response_embeddings = module.signatures['response_encoder'](
-#         input=tf.constant(responses),
-#         context=tf.constant(response_contexts))
+question_embeddings = module.signatures['question_encoder'](
+            tf.constant(questions))
+response_embeddings = module.signatures['response_encoder'](
+        input=tf.constant(responses),
+        context=tf.constant(response_contexts))
 
-# np.inner(question_embeddings, response_embeddings)
+np.inner(question_embeddings['outputs'], response_embeddings['outputs'])
 
 training_corpus = [] 
 for question, answer in zip(train_df.Context.values, train_df.Utterance.values):
     sentence = question.lower() + " " + answer.lower()
     training_corpus.append(sentence)
-training_embeddings = module.signatures['question_encoder'](
-            tf.constant(training_corpus))
+training_embeddings = module.signatures['question_encoder'](tf.constant(training_corpus))
 training_embeddings=np.array(training_embeddings['outputs'])
     
 validation_corpus = []
 for question, answer in zip(valid_df.Context.values, valid_df.Utterance.values):
     sentence = question.lower() + " " + answer.lower()
     validation_corpus.append(sentence)
-validation_embeddings = module.signatures['question_encoder'](
-            tf.constant(validation_corpus))
+validation_embeddings = module.signatures['question_encoder'](tf.constant(validation_corpus))
 validation_embeddings=np.array(validation_embeddings['outputs'])
 
 model = tf.keras.Sequential([
@@ -326,8 +323,8 @@ model.build([29880, 512])
 model.summary()
 
 num_epochs = 100
-# callbacks = myCallback()
-callbacks = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=10)
+callbacks = myCallback()
+#callbacks = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=10)
 history= model.fit(training_embeddings, train_df.Label.values, epochs=num_epochs, validation_data=(validation_embeddings, valid_df.Label.values), callbacks=[callbacks])
   
 plot_graphs(history, "accuracy")
@@ -341,7 +338,7 @@ print("\n CM: ", np.array([[TP, FN], [FP, TN]]),
     "\n Accuracy: ", accuracy_score(y_valid, y_nnet),
     "\n Precision: ", precision_score(y_valid, y_nnet),
     "\n Recall: ", recall_score(y_valid, y_nnet),
-    "\n F1: ", f1_score(y_valid, y_nnet),genade.co
+    "\n F1: ", f1_score(y_valid, y_nnet),
 )
 thr = TP/(2*TP + FN + FP)
 y_nnet = [1 if i>thr else 0 for i in y_nnet_probs]
@@ -358,8 +355,7 @@ predictions = []
 for A in KBanswers:
     sentence = input_text + " " + A
     predictions.append(sentence)
-embeddings = module.signatures['question_encoder'](
-            tf.constant(predictions))
+embeddings = module.signatures['question_encoder'](tf.constant(predictions))
 embeddings=np.array(embeddings['outputs'])
 
 k=50
@@ -383,4 +379,39 @@ step2_rankings = bm25.get_scores(input_text.split(" "))
 step2_ranked_questions = np.take(step1_corpus, list(np.argsort(step2_rankings, axis=0)[::-1][:k]))
 step2_answers = [knowledgebase.loc[knowledgebase.Context == a, "Utterance"] for a in step2_ranked_questions]
 
-print("Reranked answer: ", step2_answers[0])
+print("Reranked answers: ", step2_answers[0])
+
+def chat(k2=5):    
+  query = input("Your Query: ")
+  #query=['how long have you been in the UAE']
+  while query!="stop":
+    try:
+      predictions = []
+      for A in KBanswers:
+        sentence = query + " " + A
+        predictions.append(sentence)
+      embeddings = module.signatures['question_encoder'](tf.constant(predictions))
+      embeddings=np.array(embeddings['outputs'])
+      rankings = model.predict(embeddings)
+      k=50
+      pred_answers = np.take(KBanswers, list(np.argsort(rankings, axis=0)[::-1][:k]))
+      pred_answers = [answer[0] for answer in pred_answers]
+      step1_corpus = list(knowledgebase.loc[knowledgebase.Utterance.isin(pred_answers), 'Context'])
+      tokenized_corpus = [doc.split(" ") for doc in step1_corpus]
+      bm25 = BM25Okapi(tokenized_corpus)
+      step2_rankings = bm25.get_scores(query.split(" "))
+      step2_ranked_questions = np.take(step1_corpus, list(np.argsort(step2_rankings, axis=0)[::-1][:k2]))
+      scores = list(np.sort(step2_rankings, axis=0)[::-1][:k2])
+      step2_answers = [knowledgebase.loc[knowledgebase.Context==a].Utterance.values[0] for a in step2_ranked_questions]
+      print("\n\n======================\n\n")
+      print("Query:", query)
+      print("\nAnswers to top-{} most similar questions in corpus:".format(k2))
+      for a, s in zip(step2_answers, scores):
+          print(a, "\n(Score: {})".format(s), "\n===\n")
+    except ValueError:
+        print("some error")
+        break
+    query = input("Your Query: ")
+
+chat()
+
