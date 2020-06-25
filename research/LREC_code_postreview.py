@@ -101,7 +101,7 @@ train_df = train_df.drop('tmp', axis=1)
 train_df = train_df.reset_index()
 
 #Dor creating resource repo, commment lines 84-86 above (removing filler, siri pre and siri post) and output csv (then removed index and renamed contest, utt as Q, A)
-train_df.to_csv('MargaritaCorpusKB.csv', encoding='utf-8')
+# train_df.to_csv('MargaritaCorpusKB.csv', encoding='utf-8')
 
 #################
 
@@ -302,13 +302,13 @@ class TFIDFPredictor:
     def __init__(self):
         self.vectorizer = TfidfVectorizer()
 
-    def train(self, data):
-        self.vectorizer.fit(np.append(data.Context.values, data.Utterance.values))
+    def train(self, corpus):
+        self.vectorizer.fit(corpus)
 
-    def predict(self, context, utterances):
+    def predict(self, query, documents):
         # Convert context and utterances into tfidf vector
-        vector_context = self.vectorizer.transform([context])
-        vector_doc = self.vectorizer.transform(utterances)
+        vector_context = self.vectorizer.transform([query])
+        vector_doc = self.vectorizer.transform(documents)
         # The dot product measures the similarity of the resulting vectors
         result = np.dot(vector_doc, vector_context.T).todense()
         result = np.asarray(result).flatten()
@@ -357,316 +357,74 @@ valid_df = multiturndialogues.loc[multiturndialogues.Experiment.isin(["TRAIN"])]
 valid_df.reset_index(level=None, drop=True, inplace=True)
 valid_df = test_set_questions_ooctrain(valid_df, train_df)
 
-test_df = multiturndialogues.loc[multiturndialogues.Experiment.isin(["TEST"])]
-test_df.reset_index(level=None, drop=True, inplace=True)        
-test_df = test_set_questions_ooctrain(test_df, train_df)
-
-
-train_nonans = sum([len(ls)==0 for ls in valid_df.WOzAnswers.values])
-train_ans = sum([len(ls)!=0 for ls in valid_df.WOzAnswers.values])
-prop_train_nonans = train_nonans/(train_nonans + train_ans)
-print('#Dialogue TRAIN utterances = {}'.format(len(valid_df.Context.values)))
-print(
-      prop_train_nonans,
-      train_nonans,
-      train_ans 
-      )
-
-prop_test_nonans = sum([len(ls)==0 for ls in test_df.WOzAnswers.values])/len(test_df.WOzAnswers.values)
-print('#Dialogue TEST utterances = {}'.format(len(test_df.Context.values)))
-print(
-      prop_test_nonans,
-      sum([len(ls)==0 for ls in test_df.WOzAnswers.values]),
-      sum([len(ls)!=0 for ls in test_df.WOzAnswers.values])
-      )
-
-#upsample valid data to achieve same prop of prop_test_nonans
-upsample_nonans = int((train_nonans - prop_test_nonans*(train_nonans + train_ans))/(prop_test_nonans - 1))
-#get all answer indices in valid_df
-indeces=[]
-for ls in valid_df.WOzAnswers.values:
-    indeces += ls
-indeces=np.unique(indeces) #(useless but elegant)
-#subset where answers are not in train dialogues (might want to double check repetitions...)
-answers_in_valid_df = np.unique(train_df.loc[train_df.index.isin(indeces), 'Utterance'])
-subset = train_df.loc[~train_df.Utterance.isin(answers_in_valid_df)]
-#sample
-subset = subset.sample(n=upsample_nonans, replace=False, random_state=1985)
-#remove from train (note there is 1 repeated qs - check len of questions_in_sample vs len of sample)
-questions_in_sample = np.unique(subset.Context.values)
-train_df = train_df.loc[~train_df.Context.isin(questions_in_sample)]
-train_df = train_df.reset_index()
-
-#reset index of train and rebuild valid_df, test_df to pick up the right indices
-valid_df = multiturndialogues.loc[multiturndialogues.Experiment.isin(["TRAIN"])]
-valid_df.reset_index(level=None, drop=True, inplace=True)
-valid_df = test_set_questions_ooctrain(valid_df, train_df)
-#and add samples to valid_df
-subset = pd.DataFrame({'Context':subset.Context.values, 'WOzAnswers':[ [] for i in range(len(subset.Context.values))]})
-valid_df = valid_df.append(subset, ignore_index=True)
-valid_df.reset_index()
-
-test_df = multiturndialogues.loc[multiturndialogues.Experiment.isin(["TEST"])]
-test_df.reset_index(level=None, drop=True, inplace=True)        
-test_df = test_set_questions_ooctrain(test_df, train_df)
-
-train_nonans = sum([len(ls)==0 for ls in valid_df.WOzAnswers.values])
-train_ans = sum([len(ls)!=0 for ls in valid_df.WOzAnswers.values])
-
-prop_train_nonans = train_nonans/(train_nonans + train_ans)
-print('#Dialogue TRAIN utterances = {}'.format(len(valid_df.Context.values)))
-print(
-      prop_train_nonans,
-      train_nonans,
-      train_ans 
-      )
-prop_test_nonans = sum([len(ls)==0 for ls in test_df.WOzAnswers.values])/len(test_df.WOzAnswers.values)
-print('#Dialogue TEST utterances = {}'.format(len(test_df.Context.values)))
-print(
-      prop_test_nonans,
-      sum([len(ls)==0 for ls in test_df.WOzAnswers.values]),
-      sum([len(ls)!=0 for ls in test_df.WOzAnswers.values])
-      )
-
-#### NOTE Train data (KB) - we should strip off the samples we inserted in the valid_df. Moreover, we shall calc centroids for questions corresponding to answers that appear in valid_df vs. questions relative to answers that were not selected 
-
-
 # Train TFIDF predictor
 pred = TFIDFPredictor()
-pred.train(train_df)
+train_corpus = train_df.Context.values
+pred.train(train_corpus)
 
-y = [pred.predict(valid_df.Context[x], list(train_df.Context.values)) for x in range(len(valid_df))]
-ans = []
-nonans = []
-thresholds = []
-for thr in np.arange(0.0, 1.0, 0.05):
-    ans.append(evaluate_recall_thr(y, valid_df.WOzAnswers.values, k=1, thr=thr)[1])
-    nonans.append(evaluate_recall_thr(y, valid_df.WOzAnswers.values, k=1, thr=thr)[2])
-    thresholds.append(thr)
-pred_thr = thresholds[np.argsort([sum(x) for x in zip([l/train_ans*(1-prop_train_nonans) for l in ans], [l/train_nonans*prop_train_nonans for l in nonans])], axis=0)[::-1][0]]
+y = [pred.predict(valid_df.Context[x], list(train_corpus)) for x in range(len(valid_df))]
 
 # Evaluate TFIDF predictor QUESTION SIMILARITY (use train_df.Utterance.values for ANSWER SIM)
 for i in range(3):
-    for thr in np.arange(0.0, 1.0, 0.05):
-        print("Recall@1 for thr={}: {:g}".format(thr, evaluate_recall_thr(y, valid_df.WOzAnswers.values, k=1, thr=thr)[i]))
-# Test TFIDF predictor
-y = [pred.predict(test_df.Context[x], list(train_df.Context.values)) for x in range(len(test_df))]
-for i in range(3):
     for n in [1, 2, 5, 10, 20]:
-        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, test_df.WOzAnswers.values, n, thr=pred_thr)[i]))
-        
-## Evaluate TFIDF predictor Q-A SIMILARITY
-#y = [pred.predict(valid_df.Context[x], list(train_df.Utterance.values)) for x in range(len(valid_df))]
-#for i in range(3):
-#    for thr in np.arange(0.0, 1.0, 0.05):
-#        print("Recall@1 for thr={}: {:g}".format(thr, evaluate_recall_thr(y, valid_df.WOzAnswers.values, k=1, thr=thr)[i]))
-## Test TFIDF predictor
-#y = [pred.predict(test_df.Context[x], list(train_df.Utterance.values)) for x in range(len(test_df))]
-#for i in range(3):
-#    for n in [1, 2, 5, 10, 20]:
-#        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, test_df.WOzAnswers.values, n, thr=0.25)[i]))
+        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
 
-for testex in range(10):
-    tmp = np.argsort(y[testex ], axis=0)[::-1][:3]
-    print(tmp)
-    print(np.sort(y[testex], axis=0)[::-1][:3])
-    
-    Qid = tmp[0]
-    print("Test Question: ", test_df.Context[testex ])
-    print("Train Question: ", train_df.Context[Qid])
+def saveJsonDialogues(filepath):
+    valid_df = multiturndialogues.loc[multiturndialogues.Experiment.isin(["TRAIN"])]
+    valid_df.reset_index(level=None, drop=True, inplace=True)
+    dialogueSet = {
+        "id": "",
+        "turn0": "",
+        "turn1": "",
+        "turn2": "",
+        "model_retrieved_answers": [],
+        "scores": []
+        }
+    dialogues = []
+    for testex in range(1, len(valid_df)):
+        Qids = np.argsort(y[testex], axis=0)[::-1][:10]
+        dialogueSet["id"] = testex
+        dialogueSet["turn0"] = valid_df.Q[testex-1]
+        dialogueSet["turn1"] = valid_df.A[testex-1]
+        dialogueSet["turn2"] = valid_df.Q[testex]
+        dialogueSet["model_retrieved_answers"] = list(train_df.Utterance[Qids])
+        dialogueSet["scores"] = list(np.sort(y[testex], axis=0)[::-1][:10])
+        dialogues.append(dialogueSet.copy()) 
+    import json
+    with open(filepath, 'w') as fout:
+        json.dump(dialogues , fout)
 
-q = []
-GA = []
-A1 = []
-A2 = []
-A3 = []
-A4 = []
-A5 = []
-for testex in range(len(test_df)):
-    question = test_df.Context[testex]
-    Qids = np.argsort(y[testex], axis=0)[::-1][:5]
-    As = train_df.Utterance[Qids]
-    RANKs = np.sort(y[testex], axis=0)[::-1][:5]
-    q.append(question)
-    GA.append(multiturndialogues[multiturndialogues.Q == question].A.iloc[0])
-    A1.append(As.iloc[0] + " (rank={})".format(RANKs[0]))
-    A2.append(As.iloc[1] + " (rank={})".format(RANKs[1]))
-    A3.append(As.iloc[2] + " (rank={})".format(RANKs[2]))
-    A4.append(As.iloc[3] + " (rank={})".format(RANKs[3]))
-    A5.append(As.iloc[4] + " (rank={})".format(RANKs[4]))
-TFIDFdialoguesout = pd.DataFrame({'q':q, 'GA':GA, '1A':A1, '2A':A2, '3A':A3, '4A':A4, '5A':A5})   
-TFIDFdialoguesout.to_csv('TF-IDF dialogues.csv', encoding='utf-8')   
-
-
+saveJsonDialogues('data/devTfIdfDialogues.json')
 
 ###### BM25 ######
 # Train BM25 predictor q-q relevance
 from rank_bm25 import BM25Okapi
 
-corpus = list(train_df.Context.values)
+#corpus = list(train_df.Context.values)
 
-tokenized_corpus = [doc.split(" ") for doc in corpus]
+tokenized_corpus = [doc.split(" ") for doc in train_corpus]
 bm25 = BM25Okapi(tokenized_corpus)
 
 y = [bm25.get_scores(valid_df.Context[x].split(" ")) for x in range(len(valid_df))]
-maxscore = max([max(scores) for scores in y])
-ans = []
-nonans = []
-thresholds = []
-for thr in np.arange(0.0, maxscore, maxscore/20):
-    ans.append(evaluate_recall_thr(y, valid_df.WOzAnswers.values, k=1, thr=thr)[1])
-    nonans.append(evaluate_recall_thr(y, valid_df.WOzAnswers.values, k=1, thr=thr)[2])
-    thresholds.append(thr)
-pred_thr = thresholds[np.argsort([sum(x) for x in zip([l/train_ans*(1-prop_train_nonans) for l in ans], [l/train_nonans*prop_train_nonans for l in nonans])], axis=0)[::-1][0]]
 
 # Evaluate BM25 predictor
 for i in range(3):
-    for thr in np.arange(0.0, maxscore, maxscore/20):
-        print("Recall@1 for thr={}: {:g}".format(thr, evaluate_recall_thr(y, valid_df.WOzAnswers.values, k=1, thr=thr)[i]))
-# Test BM25 predictor
-y = [bm25.get_scores(test_df.Context[x].split(" ")) for x in range(len(test_df))]
-for i in range(3):
     for n in [1, 2, 5, 10, 20]:
-        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, test_df.WOzAnswers.values, n, thr=pred_thr)[i]))
-        
-## Evaluate BM25 predictor Q-A relevance --so crap results
-# corpus = list(train_df.Utterance.values)
+        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
 
-# tokenized_corpus = [doc.split(" ") for doc in corpus]
-# bm25 = BM25Okapi(tokenized_corpus)
-
-# y = [bm25.get_scores(valid_df.Context[x].split(" ")) for x in range(len(valid_df))]
-# maxscore = max([max(scores) for scores in y])
-# ans = []
-# nonans = []
-# thresholds = []
-# for thr in np.arange(0.0, maxscore, maxscore/20):
-#     ans.append(evaluate_recall_thr(y, valid_df.WOzAnswers.values, k=1, thr=thr)[1])
-#     nonans.append(evaluate_recall_thr(y, valid_df.WOzAnswers.values, k=1, thr=thr)[2])
-#     thresholds.append(thr)
-# pred_thr = thresholds[np.argsort([sum(x) for x in zip([l/train_ans*(1-prop_train_nonans) for l in ans], [l/train_nonans*prop_train_nonans for l in nonans])], axis=0)[::-1][0]]
-
-# # Evaluate BM25 predictor
-# for i in range(3):
-#     for thr in np.arange(0.0, maxscore, maxscore/20):
-#         print("Recall@1 for thr={}: {:g}".format(thr, evaluate_recall_thr(y, valid_df.WOzAnswers.values, k=1, thr=thr)[i]))
-# # Test BM25 predictor
-# y = [bm25.get_scores(test_df.Context[x].split(" ")) for x in range(len(test_df))]
-# for i in range(3):
-#     for n in [1, 2, 5, 10, 20]:
-#         print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, test_df.WOzAnswers.values, n, thr=0)[i]))
-        
-for testex in range(10):
-    tmp = np.argsort(y[testex ], axis=0)[::-1][:3]
-    print(tmp)
-    print(np.sort(y[testex], axis=0)[::-1][:3])
-    
-    Qid = tmp[0]
-    print("Test Question: ", test_df.Context[testex ])
-    print("Train Question: ", train_df.Context[Qid])
-
-q = []
-GA = []
-A1 = []
-A2 = []
-A3 = []
-A4 = []
-A5 = []
-for testex in range(len(test_df)):
-    question = test_df.Context[testex]
-    Qids = np.argsort(y[testex], axis=0)[::-1][:5]
-    As = train_df.Utterance[Qids]
-    RANKs = np.sort(y[testex], axis=0)[::-1][:5]
-    q.append(question)
-    GA.append(multiturndialogues[multiturndialogues.Q == question].A.iloc[0])
-    A1.append(As.iloc[0] + " (rank={})".format(RANKs[0]))
-    A2.append(As.iloc[1] + " (rank={})".format(RANKs[1]))
-    A3.append(As.iloc[2] + " (rank={})".format(RANKs[2]))
-    A4.append(As.iloc[3] + " (rank={})".format(RANKs[3]))
-    A5.append(As.iloc[4] + " (rank={})".format(RANKs[4]))
-BM25dialoguesout = pd.DataFrame({'q':q, 'GA':GA, '1A':A1, '2A':A2, '3A':A3, '4A':A4, '5A':A5})   
-BM25dialoguesout.to_csv('BM25 dialogues.csv', encoding='utf-8')   
-
-
-
-
-
-### InferSent ###
-model_version = 1
-MODEL_PATH = "InferSent/encoder/infersent%s.pickle" % model_version
-params_model = {'bsize': 64, 'word_emb_dim': 300, 'enc_lstm_dim': 2048,
-                'pool_type': 'max', 'dpout_model': 0.0, 'version': model_version}
-model = InferSent(params_model)
-model.load_state_dict(torch.load(MODEL_PATH))
-
-# Keep it on CPU or put it on GPU
-use_cuda = False
-model = model.cuda() if use_cuda else model
-
-# If infersent1 -> use GloVe embeddings. If infersent2 -> use InferSent embeddings.
-W2V_PATH = 'InferSent/dataset/GloVe/glove.840B.300d.txt' if model_version == 1 else 'InferSent/dataset/fastText/crawl-300d-2M.vec'
-model.set_w2v_path(W2V_PATH)
-
-allsentences = []
-for item in train_df.Context.values: allsentences.append(item)
-for item in train_df.Utterance.values: allsentences.append(item) # used answer too to expand vocabulary
-model.build_vocab(allsentences, tokenize=True)
-
-#QUESTION SIMILARITY
-train_embeddings = model.encode(train_df.Context.values, bsize=128, tokenize=False, verbose=True)
-valid_embeddings = model.encode(valid_df.Context.values, bsize=128, tokenize=False, verbose=True)
-test_embeddings = model.encode(test_df.Context.values, bsize=128, tokenize=False, verbose=True)
-
-##Examples mentioned in paper: Q id 20 and 30, answ id 2017 and 77 when the test set was conversations 1 and 2, and I kept empty WoZ answers
-#np.argsort([cosine(valid_embeddings[1], utt) for utt in train_embeddings], axis=0)[::-1][:5]
-#np.sort([cosine(valid_embeddings[1], utt) for utt in train_embeddings], axis=0)[::-1][:5]
-#valid_df.Context[1]
-#valid_df.WOzAnswers[1]
-#train_df.Context[133]
-#train_df.Utterance[133]
-
-### I had to put the WOZ answers given by picking from new data to properly evaluate this. --> think if it makes sense to include the ooc answers too?
-
-# Evaluate InferSent predictor
-y = [INFERSENTPredictor_new(valid_embeddings[x], train_embeddings) for x in range(len(valid_embeddings))]
-ans = []
-nonans = []
-thresholds = []
-for thr in np.arange(0.0, 1.0, 0.05):
-    ans.append(evaluate_recall_thr(y, valid_df.WOzAnswers.values, k=1, thr=thr)[1])
-    nonans.append(evaluate_recall_thr(y, valid_df.WOzAnswers.values, k=1, thr=thr)[2])
-    thresholds.append(thr)
-pred_thr = thresholds[np.argsort([sum(x) for x in zip([l/train_ans*(1-prop_train_nonans) for l in ans], [l/train_nonans*prop_train_nonans for l in nonans])], axis=0)[::-1][0]]
-
-for i in range(3):
-    for thr in np.arange(0, 1, 0.05):
-        print("Recall@1 for thr={}: {:g}".format(thr, evaluate_recall_thr(y, valid_df.WOzAnswers.values, k=1, thr=thr)[i]))
-
-# Test InferSent predictor
-y = [INFERSENTPredictor_new(test_embeddings[x], train_embeddings) for x in range(len(test_embeddings))]
-for i in range(3):
-    for n in [1, 2, 5, 10, 20]:
-        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, test_df.WOzAnswers.values, n, thr=pred_thr)[i]))
-
-for testex in range(10):
-    tmp = np.argsort(y[testex ], axis=0)[::-1][:3]
-    print(tmp)
-    print(np.sort(y[testex], axis=0)[::-1][:3])
-    
-    Qid = tmp[0]
-    print("Test Question: ", test_df.Context[testex ])
-    print("Train Question: ", train_df.Context[Qid])
-    
-print("InferSent Dialogue")    
-for testex in range(34):
-    Qid = np.argsort(y[testex ], axis=0)[::-1][0]
-    print("Question (Test Set): ", test_df.Context[testex])
-    print("Answer (KB'): ", train_df.Utterance[Qid])
-    print("(Cosine Similarity: {})".format(np.sort(y[testex], axis=0)[::-1][0]))
-
+saveJsonDialogues('data/devBm25Dialogues.json')
+  
 
 
 ########## USING BERT ##########
+model_path = '/Users/amc/Documents/fine_tuned_models/bert_text_classification/Margarita_1toAll/'
+# Load pre-trained model tokenizer (vocabulary)
+tokenizer = BertTokenizer.from_pretrained(model_path)
+# Load pre-trained model (weights)
+model = BertModel.from_pretrained(model_path)
+# Put the model in "evaluation" mode, meaning feed-forward operation.
+model.eval()
+
 # Load pre-trained model tokenizer (vocabulary)
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 # Load pre-trained model (weights)
@@ -678,69 +436,23 @@ model.eval()
 
 # QUESTION SIMILARITY
 train_embeddings = []
-for text in train_df.Context.values:
+for text in train_corpus:
     train_embeddings.append(bertembed(text)[0])
 train_embeddings = np.array(train_embeddings)
 valid_embeddings = []
 for text in valid_df.Context.values:
     valid_embeddings.append(bertembed(text)[0])
 valid_embeddings = np.array(valid_embeddings)
-test_embeddings = []
-for text in test_df.Context.values:
-    test_embeddings.append(bertembed(text)[0])
-test_embeddings = np.array(test_embeddings)
+
  
 y = [INFERSENTPredictor_new(valid_embeddings[x], train_embeddings) for x in range(len(valid_embeddings))]
-ans = []
-nonans = []
-thresholds = []
-for thr in np.arange(0.0, 1.0, 0.05):
-    ans.append(evaluate_recall_thr(y, valid_df.WOzAnswers.values, k=1, thr=thr)[1])
-    nonans.append(evaluate_recall_thr(y, valid_df.WOzAnswers.values, k=1, thr=thr)[2])
-    thresholds.append(thr)
-pred_thr = thresholds[np.argsort([sum(x) for x in zip([l/train_ans*(1-prop_train_nonans) for l in ans], [l/train_nonans*prop_train_nonans for l in nonans])], axis=0)[::-1][0]]
-
-for i in range(3):
-    for thr in np.arange(0, 1, 0.05):
-        print("Recall@1 for thr={}: {:g}".format(thr, evaluate_recall_thr(y, valid_df.WOzAnswers.values, k=1, thr=thr)[i]))
-
-y = [INFERSENTPredictor_new(test_embeddings[x], train_embeddings) for x in range(len(test_embeddings))]
 for i in range(3):
     for n in [1, 2, 5, 10, 20]:
-        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, test_df.WOzAnswers.values, n, thr=pred_thr)[i]))
+        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
 #MEDIAN pooling better than mean and close to TFIDF on test set --need more error analysis because HP: BERT does better selection than tfidf even if wrong question (second best predition by bert better than second best by tfidf). Mode pretty shit. Max better than mode, worse than mean. mean-max not great too. Bert cased doesn't make it better. speach in practice will be converted to lowercase text anyway. Large BERT doesn't bring improvements
 
+saveJsonDialogues('data/devBERTbaseuncasedDialogues.json')
 
-for testex in range(10):
-    tmp = np.argsort(y[testex], axis=0)[::-1][:3]
-    print(tmp)
-    print(np.sort(y[testex], axis=0)[::-1][:3])
-    
-    Qid = tmp[0]
-    print("Test Question: ", test_df.Context[testex])
-    print("Train Question: ", train_df.Context[Qid])
-
-q = []
-GA = []
-A1 = []
-A2 = []
-A3 = []
-A4 = []
-A5 = []
-for testex in range(len(test_df)):
-    question = test_df.Context[testex]
-    Qids = np.argsort(y[testex], axis=0)[::-1][:5]
-    As = train_df.Utterance[Qids]
-    RANKs = np.sort(y[testex], axis=0)[::-1][:5]
-    q.append(question)
-    GA.append(multiturndialogues[multiturndialogues.Q == question].A.iloc[0])
-    A1.append(As.iloc[0] + " (rank={})".format(RANKs[0]))
-    A2.append(As.iloc[1] + " (rank={})".format(RANKs[1]))
-    A3.append(As.iloc[2] + " (rank={})".format(RANKs[2]))
-    A4.append(As.iloc[3] + " (rank={})".format(RANKs[3]))
-    A5.append(As.iloc[4] + " (rank={})".format(RANKs[4]))
-BERTdialoguesout = pd.DataFrame({'q':q, 'GA':GA, '1A':A1, '2A':A2, '3A':A3, '4A':A4, '5A':A5})   
-BERTdialoguesout.to_csv('BERT dialogues.csv', encoding='utf-8')    
     
 # ANSWER SIMILARITY
 train_embeddings = []
@@ -750,14 +462,198 @@ train_embeddings = np.array(train_embeddings)
  
 y = [INFERSENTPredictor_new(valid_embeddings[x], train_embeddings) for x in range(len(valid_embeddings))]
 for i in range(3):
-    for thr in np.arange(0, 1, 0.05):
-        print("Recall@1 for thr={}: {:g}".format(thr, evaluate_recall_thr(y, valid_df.WOzAnswers.values, k=1, thr=thr)[i]))
-    
-y = [INFERSENTPredictor_new(test_embeddings[x], train_embeddings) for x in range(len(test_embeddings))]
-for i in range(3):
     for n in [1, 2, 5, 10, 20]:
-        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, test_df.WOzAnswers.values, n, thr=0.7)[i]))
+        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
 
+
+
+####### Using DNN initialized on ni sentence encoders model + BM25 ######
+def print_metrics(y):                         
+    query_precisions, query_recalls, query_precision_at20s, query_recall_at20s, query_precision_at10s, query_recall_at10s,  query_precision_at5s, query_recall_at5s,  query_precision_at2s, query_recall_at2s,  query_precision_at1s, query_recall_at1s, ave_precisions, rec_ranks, check = [], [], [], [], [], [], [], [], [], [], [], [], [], [], []
+    for query, retrieval_scores in zip(list(valid_df.Q.values), y):
+        # documents=corpus
+        sorted_retrieval_scores = np.sort(retrieval_scores, axis=0)[::-1]
+        if sorted_retrieval_scores[0]==0:
+            sorted_retrieved_documents = []
+            relevant_documents = []
+            query_precisions.append(0)
+            query_recalls.append(0)
+            query_precision_at20s.append(0)
+            query_precision_at10s.append(0)
+            query_precision_at5s.append(0)
+            query_precision_at2s.append(0)
+            query_precision_at1s.append(0)
+            query_recall_at20s.append(0)
+            query_recall_at10s.append(0)
+            query_recall_at5s.append(0)
+            query_recall_at2s.append(0)
+            query_recall_at1s.append(0)
+            ave_precisions.append(0)
+            rec_ranks.append(0)
+        else:
+            sorted_id_documents = np.argsort(retrieval_scores, axis=0)[::-1]
+            sorted_id_retreved_documents = sorted_id_documents[sorted_retrieval_scores>0]
+            sorted_retrieved_documents = [KBanswers[i] for i in sorted_id_retreved_documents]
+            relevant_documents = list(valid_df[['BA1', 'BA2', 'BA3', 'BA4', 'BA5', 'BA6']].loc[valid_df.Q.values==query].values[0])
+            # relevant_documents = list(train_df[train_df['Utterance'].isin(relevant_answers)].Context)    
+            query_precisions.append(len(set(relevant_documents) & set(sorted_retrieved_documents)) / len(set(sorted_retrieved_documents)))
+            query_recalls.append(len(set(relevant_documents) & set(sorted_retrieved_documents)) / len(set(relevant_documents)))    
+            query_precision_at20s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:20])) / len(set(sorted_retrieved_documents[:20])))
+            query_precision_at10s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:10])) / len(set(sorted_retrieved_documents[:10])))
+            query_precision_at5s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:5])) / len(set(sorted_retrieved_documents[:5])))
+            query_precision_at2s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:2])) / len(set(sorted_retrieved_documents[:2])))
+            query_precision_at1s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:1])) / len(set(sorted_retrieved_documents[:1])))
+            # query_recall_at20s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:20])) / min(len(set(relevant_documents)), 20))
+            # query_recall_at10s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:10])) / min(len(set(relevant_documents)), 10))
+            # query_recall_at5s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:5])) / min(len(set(relevant_documents)), 5))
+            # query_recall_at2s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:2])) / min(len(set(relevant_documents)), 2))
+            query_recall_at1s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:1])) / min(len(set(relevant_documents)), 1))
+            p_at_ks, rel_at_ks = [], []
+            for k in range(1, 1+len(set(sorted_retrieved_documents))):
+                p_at_ks.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:k])) / len(set(sorted_retrieved_documents[:k])))
+                rel_at_ks.append(1 if sorted_retrieved_documents[k-1] in relevant_documents else 0)
+            ave_precisions.append(sum([p*r for p, r in zip(p_at_ks, rel_at_ks)])/len(set(relevant_documents)))
+            if query_recalls[-1]>0:
+                for r, doc in enumerate(sorted_retrieved_documents):
+                    if doc in relevant_documents:
+                        rec_ranks.append(1/(1+r))
+                        break
+                else:
+                    rec_ranks.append(0)
+        check.append([query, sorted_retrieved_documents[:3], relevant_documents])
+            
+    print("Mean Average Precision (MAP): ", np.mean(ave_precisions))
+    print("Mean Reciprocal Rank (MRR): ", np.mean(rec_ranks))
+    print("Mean precision: ", np.mean(query_precisions))
+    print("Mean recall: ", np.mean(query_recalls))
+    print("Mean precision @20: ", np.mean(query_precision_at20s))
+    print("Mean precision @10: ", np.mean(query_precision_at10s))
+    print("Mean precision @5: ", np.mean(query_precision_at5s))
+    print("Mean precision @2: ", np.mean(query_precision_at2s))
+    print("Mean precision @1: ", np.mean(query_precision_at1s))
+    # print("Mean recall @20: ", np.mean(query_recall_at20s))
+    # print("Mean recall @10: ", np.mean(query_recall_at10s))
+    # print("Mean recall @5: ", np.mean(query_recall_at5s))
+    # print("Mean recall @2: ", np.mean(query_recall_at2s))
+    print("Mean recall @1: ", np.mean(query_recall_at1s))
+
+model = tf.keras.models.load_model('/Users/amc/Documents/TOIA-NYUAD/research/saved_dl_unisentencqa_sensqa_model1/model')  
+model.summary()    
+module = hub.load('./3')
+
+KBanswers = list(np.unique(train_df.Utterance.values))
+input_text = 'Is this robot artificial intelligence connected to the work, right?'
+def predict_rankings(input_text):
+    predictions = []
+    for A in KBanswers:
+        sentence = input_text + " " + A
+        predictions.append(sentence)
+    embeddings = module.signatures['question_encoder'](tf.constant(predictions))
+    embeddings=np.array(embeddings['outputs'])
+    return model.predict(embeddings)
+
+rankings = predict_rankings(input_text)
+
+### This is ONLY DNN ### (BTW this y takes a long to compute... need to optmize code/method here!)
+y = [predict_rankings(query) for query in list(valid_df.Q.values)] 
+yhat = [[i[0] for i in y[j].tolist()] for j in range(len(y))]
+print_metrics(yhat)
+
+# Then, let's see if we can improve by combining DNN and BM25
+# k=50
+
+def print_metrics(y, yhat):                         
+    query_precisions, query_recalls, query_precision_at20s, query_recall_at20s, query_precision_at10s, query_recall_at10s,  query_precision_at5s, query_recall_at5s,  query_precision_at2s, query_recall_at2s,  query_precision_at1s, query_recall_at1s, ave_precisions, rec_ranks, check = [], [], [], [], [], [], [], [], [], [], [], [], [], [], []
+    for query, retrieval_scores, answer_scores in zip(list(valid_df.Q.values), y, yhat):
+        # documents=corpus
+        if np.sum(retrieval_scores)==0:
+            sorted_retrieved_documents = []
+            relevant_documents = []
+            query_precisions.append(0)
+            query_recalls.append(0)
+            query_precision_at20s.append(0)
+            query_precision_at10s.append(0)
+            query_precision_at5s.append(0)
+            query_precision_at2s.append(0)
+            query_precision_at1s.append(0)
+            query_recall_at20s.append(0)
+            query_recall_at10s.append(0)
+            query_recall_at5s.append(0)
+            query_recall_at2s.append(0)
+            query_recall_at1s.append(0)
+            ave_precisions.append(0)
+            rec_ranks.append(0)
+        else:
+            for i in range(len(train_corpus)):
+                ans = train_df[train_df['Context']==(train_corpus[i])].Utterance.values
+                ids =  [j for j,x in enumerate(KBanswers) if x in ans]
+                scores = [answer_scores[m] for m in ids]
+                score = np.mean(scores)
+                retrieval_scores[i] = retrieval_scores[i] + score  
+            sorted_retrieval_scores = np.sort(retrieval_scores, axis=0)[::-1]
+            sorted_id_documents = np.argsort(retrieval_scores, axis=0)[::-1]
+            sorted_id_retreved_documents = sorted_id_documents[sorted_retrieval_scores>0]
+            sorted_retrieved_documents = train_corpus[sorted_id_retreved_documents]
+            relevant_answers = list(valid_df[['BA1', 'BA2', 'BA3', 'BA4', 'BA5', 'BA6']].loc[valid_df.Q.values==query].values[0])
+            relevant_documents = list(train_df[train_df['Utterance'].isin(relevant_answers)].Context)    
+            query_precisions.append(len(set(relevant_documents) & set(sorted_retrieved_documents)) / len(set(sorted_retrieved_documents)))
+            query_recalls.append(len(set(relevant_documents) & set(sorted_retrieved_documents)) / len(set(relevant_documents)))    
+            query_precision_at20s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:20])) / len(set(sorted_retrieved_documents[:20])))
+            query_precision_at10s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:10])) / len(set(sorted_retrieved_documents[:10])))
+            query_precision_at5s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:5])) / len(set(sorted_retrieved_documents[:5])))
+            query_precision_at2s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:2])) / len(set(sorted_retrieved_documents[:2])))
+            query_precision_at1s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:1])) / len(set(sorted_retrieved_documents[:1])))
+            # query_recall_at20s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:20])) / min(len(set(relevant_documents)), 20))
+            # query_recall_at10s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:10])) / min(len(set(relevant_documents)), 10))
+            # query_recall_at5s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:5])) / min(len(set(relevant_documents)), 5))
+            # query_recall_at2s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:2])) / min(len(set(relevant_documents)), 2))
+            query_recall_at1s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:1])) / min(len(set(relevant_documents)), 1))
+            p_at_ks, rel_at_ks = [], []
+            for k in range(1, 1+len(set(sorted_retrieved_documents))):
+                p_at_ks.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:k])) / len(set(sorted_retrieved_documents[:k])))
+                rel_at_ks.append(1 if sorted_retrieved_documents[k-1] in relevant_documents else 0)
+            ave_precisions.append(sum([p*r for p, r in zip(p_at_ks, rel_at_ks)])/len(set(relevant_documents)))
+            if query_recalls[-1]>0:
+                for r, doc in enumerate(sorted_retrieved_documents):
+                    if doc in relevant_documents:
+                        rec_ranks.append(1/(1+r))
+                        break
+                else:
+                    rec_ranks.append(0)
+        check.append([query, sorted_retrieved_documents[:3], relevant_documents])
+            
+    print("Mean Average Precision (MAP): ", np.mean(ave_precisions))
+    print("Mean Reciprocal Rank (MRR): ", np.mean(rec_ranks))
+    print("Mean precision: ", np.mean(query_precisions))
+    print("Mean recall: ", np.mean(query_recalls))
+    print("Mean precision @20: ", np.mean(query_precision_at20s))
+    print("Mean precision @10: ", np.mean(query_precision_at10s))
+    print("Mean precision @5: ", np.mean(query_precision_at5s))
+    print("Mean precision @2: ", np.mean(query_precision_at2s))
+    print("Mean precision @1: ", np.mean(query_precision_at1s))
+    # print("Mean recall @20: ", np.mean(query_recall_at20s))
+    # print("Mean recall @10: ", np.mean(query_recall_at10s))
+    # print("Mean recall @5: ", np.mean(query_recall_at5s))
+    # print("Mean recall @2: ", np.mean(query_recall_at2s))
+    print("Mean recall @1: ", np.mean(query_recall_at1s))
+
+print_metrics(y, yhat)
+
+k=50 #( or rank > 0.5 or thr: select only classified as 1)
+pred_answers = np.take(KBanswers, list(np.argsort(rankings, axis=0)[::-1][:k]))
+pred_answers = [answer[0] for answer in pred_answers]
+step1_corpus = list(knowledgebase.loc[knowledgebase.Utterance.isin(pred_answers), 'Context'])
+tokenized_corpus = [doc.split(" ") for doc in step1_corpus]
+
+k=5
+bm25 = BM25Okapi(tokenized_corpus)
+step2_rankings = bm25.get_scores(input_text.split(" "))
+step2_ranked_questions = np.take(step1_corpus, list(np.argsort(step2_rankings, axis=0)[::-1][:k]))
+step2_answers = [knowledgebase.loc[knowledgebase.Context == a, "Utterance"] for a in step2_ranked_questions]
+
+print("Reranked answers: ", step2_answers[0])
+        
+        
 
 #centroids
 KBcentroid = train_embeddings.mean(0)

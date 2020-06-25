@@ -31,43 +31,86 @@ Created on Fri May  1 09:50:44 2020
 
 import pandas as pd
 import numpy as np
-
-df_knowledgebase = pd.read_csv('/Users/amc/Documents/TOIA-NYUAD/research/MargaritaCorpusKB.csv', encoding='utf-8')
-#take random subset, only Q and A
-df_dataset = df_knowledgebase[['Context', 'Utterance']].sample(n=50, random_state=1)
-###-clear space-###
-del(df_knowledgebase)
-###################
-df_dataset = df_dataset.rename(columns={"Context": "SENTENCE"})
-#create lookup table. Utterances will become labels
-ls_utterances = list(np.unique(df_dataset.Utterance.values))
-df_lookup = pd.DataFrame({'ID':1 + np.array(range(len(ls_utterances))), 'Utterance':ls_utterances})
-###-clear space-###
-del(ls_utterances)
-###################
-df_dataset=df_dataset.join(df_lookup.set_index('Utterance'), on='Utterance')[['ID', 'SENTENCE']]
-df_dataset.reset_index(level=None, drop=True, inplace=True)
-
-df_augmented_dataset = pd.DataFrame({'ID':[], 'SENTENCE':[]})
+from sklearn.model_selection import train_test_split
+import nltk
+nltk.download('wordnet')
 from eda import *
-for i in range(len(df_dataset)):
+import tensorflow as tf
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.callbacks import EarlyStopping
+from sklearn.metrics import *
+import tensorflow as tf
+import tensorflow_hub as hub
+import tensorflow_text as text
+import numpy as np
+from rank_bm25 import BM25Okapi
+import matplotlib.pyplot as plt
+import io
+from helper_functions import *
+
+def allnull(somelist):
+    count=0
+    for i in somelist:
+        if pd.isnull(i):
+            count+=1
+    return count==len(somelist)
+
+def decode_qapair(text, reverse_word_index):
+    return ' '.join([reverse_word_index.get(i, '?') for i in text])
+
+def plot_graphs(history, string):
+  plt.plot(history.history[string])
+  plt.plot(history.history['val_'+string])
+  plt.xlabel("Epochs")
+  plt.ylabel(string)
+  plt.legend([string, 'val_'+string])
+  plt.show()
+  
+knowledgebase = pd.read_csv('/Users/amc/Documents/TOIA-NYUAD/research/MargaritaCorpusKB.csv', encoding='utf-8')
+train_test_dialogues = pd.read_csv('/Users/amc/Documents/TOIA-NYUAD/research/DIALOGUES.csv', encoding='utf-8')
+
+validation_dialogues = train_test_dialogues.loc[train_test_dialogues.Experiment=="TRAIN"]
+test_dialogues = train_test_dialogues.loc[train_test_dialogues.Experiment=="TEST"]
+
+KBanswers = list(np.unique(knowledgebase.Utterance.values))
+
+Context, Utterance, Labels= [], [], []
+for example_id in range(len(knowledgebase)):
+    no_distr_to_sample = 0
+    Context.append(knowledgebase.Context.values[example_id])
+    Utterance.append(knowledgebase.Utterance.values[example_id])
+    Labels.append(1)
+    id_to_exclude = KBanswers.index(knowledgebase.Utterance.values[example_id])
+    tmp_distractors = [KBanswers[i] for i in
+            np.array(range(len(KBanswers)))
+            [np.isin(range(len(KBanswers)), id_to_exclude, invert=True)]
+            ]
+    np.random.seed(example_id)
+    Context.append(knowledgebase.Context.values[example_id])
+    Utterance.append(np.random.choice(tmp_distractors, 1)[0])
+    Labels.append(0)
+
+train_df = pd.DataFrame({'Context':Context, 'Utterance':Utterance, 'Label':Labels})
+
+for i in range(len(train_df)):
     try:
-        df_singlesentence = pd.DataFrame({
-            'ID': list(np.repeat(df_dataset.ID.values[i], 16)),
-            'SENTENCE': eda(df_dataset.SENTENCE.values[i], .2, .2, .2, .2, 15)
+        tmp_df = pd.DataFrame({
+            'Context': eda(train_df.Context.values[i], .2, .2, .2, .2, 15),
+            'Utterance': list(np.repeat(train_df.Utterance.values[i], 16)),
+            'Label': list(np.repeat(train_df.Label.values[i], 16))
             })
-        df_augmented_dataset = df_augmented_dataset.append(df_singlesentence)
+        train_df = train_df.append(tmp_df)
     except Exception:
         pass
-df_augmented_dataset.reset_index(level=None, drop=True, inplace=True)
-###-clear space-###
-del(i, df_singlesentence, stop_words, wordnet)
+
+train_df.reset_index(level=None, drop=True, inplace=True)
 ###################
-ar_msk = np.random.rand(len(df_augmented_dataset)) < 2/3
-df_augmented_dataset[ar_msk].to_csv('data/data.csv', encoding='utf-8', index=False)
-df_augmented_dataset[~ar_msk].to_csv('data/data_test.csv', encoding='utf-8', index=False)
+ar_msk = np.random.rand(len(train_df)) < 2/3
+train_df[ar_msk].to_csv('data/data.csv', encoding='utf-8', index=False)
+train_df[~ar_msk].to_csv('data/data_test.csv', encoding='utf-8', index=False)
 ###-clear space-###
-del(df_dataset, df_augmented_dataset, ar_msk)
+del(train_df, ar_msk)
 ###################
 
 import os
@@ -89,8 +132,7 @@ import csv
 import random
 
 dataDir = 'data'
-classes = len(df_lookup)
-max_seq_length = 64
+max_seq_length = 256
 
 def loadData(tokenizer):
     fileName = os.path.join(dataDir, "data.csv")
@@ -127,16 +169,12 @@ def loadData(tokenizer):
     testing_set = shuffled_set_test[0:]
 
     for el in training_set:
-        train_set.append(el[1])
-        zeros = [0] * classes
-        zeros[int(float(el[0])) - 1] = 1
-        train_labels.append(zeros)
+        train_set.append(el[0] + el[1])
+        train_labels.append(float(el[2]))
 
     for el in testing_set:
-        test_set.append(el[1])
-        zeros = [0] * classes
-        zeros[int(float(el[0])) - 1] = 1
-        test_labels.append(zeros)
+        test_set.append(el[0] + el[1])
+        test_labels.append(float(el[2]))
 
     #defineTokenizerConfig(train_set)
 
@@ -167,13 +205,9 @@ import os
 
 def createBertLayer():
     global bert_layer
-
     bertDir = os.path.join(modelBertDir, "uncased_L-2_H-128_A-2")
-
     bert_params = bert.params_from_pretrained_ckpt(bertDir)
-
     bert_layer = bert.BertModelLayer.from_params(bert_params, name="bert")
-
     bert_layer.apply_adapter_freeze()
 
 modelBertDir='models'
@@ -182,7 +216,6 @@ createBertLayer()
 def loadBertCheckpoint():
     modelsFolder = os.path.join(modelBertDir, "uncased_L-2_H-128_A-2")
     checkpointName = os.path.join(modelsFolder, "bert_model.ckpt")
-
     bert.load_stock_weights(bert_layer, checkpointName)
 
     
@@ -190,7 +223,6 @@ import tensorflow as tf
 
 def createModel():
     global model
-
     model = tf.keras.Sequential([
         tf.keras.layers.Input(shape=(max_seq_length,), dtype='int32', name='input_ids'),
         bert_layer,
@@ -199,13 +231,10 @@ def createModel():
         tf.keras.layers.Dropout(0.3),
         tf.keras.layers.Dense(128, activation=tf.nn.relu),
         tf.keras.layers.Dropout(0.5),
-        tf.keras.layers.Dense(classes, activation=tf.nn.softmax)
+        tf.keras.layers.Dense(1, activation=tf.nn.sigmoid)
     ])
-
+    model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
     model.build(input_shape=(None, max_seq_length))
-
-    model.compile(loss='categorical_crossentropy', optimizer=tf.optimizers.Adam(lr=0.0001), metrics=['accuracy'])
-
     print(model.summary())
 
 createModel()
@@ -213,18 +242,16 @@ createModel()
 def fitModel(training_set, training_label, testing_set, testing_label):
     global history
     checkpointName = os.path.join(modelDir, "bert_faq.ckpt")
-
     # Create a callback that saves the model's weights
     cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpointName,
                                                      save_weights_only=True,
                                                      verbose=1)
-
     # callback = StopTrainingClassComplete()
-
     history = model.fit(
         training_set,
         training_label,
-        epochs=100,
+        epochs=10,
+        batch_size=int(len(training_set)/32),
         validation_data=(testing_set, testing_label),
         verbose=1,
         callbacks=[cp_callback]
