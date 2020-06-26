@@ -387,7 +387,7 @@ def saveJsonDialogues(filepath, ga=False):
         dialogueSet["turn1"] = valid_df.A[testex-1]
         dialogueSet["turn2"] = valid_df.Q[testex]
         if ga:
-            dialogueSet["model_retrieved_answers"] = valid_df.A[testex]
+            dialogueSet["model_retrieved_answers"] = [valid_df.A[testex]]
             dialogueSet["scores"] = [1]
         else:
             Qids = np.argsort(y[testex], axis=0)[::-1][:10]
