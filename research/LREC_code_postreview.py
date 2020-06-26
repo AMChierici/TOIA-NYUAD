@@ -369,7 +369,7 @@ for i in range(3):
     for n in [1, 2, 5, 10, 20]:
         print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
 
-def saveJsonDialogues(filepath):
+def saveJsonDialogues(filepath, ga=False):
     valid_df = multiturndialogues.loc[multiturndialogues.Experiment.isin(["TRAIN"])]
     valid_df.reset_index(level=None, drop=True, inplace=True)
     dialogueSet = {
@@ -381,19 +381,24 @@ def saveJsonDialogues(filepath):
         "scores": []
         }
     dialogues = []
-    for testex in range(1, len(valid_df)):
-        Qids = np.argsort(y[testex], axis=0)[::-1][:10]
+    for testex in range(1, len(valid_df)):        
         dialogueSet["id"] = testex
         dialogueSet["turn0"] = valid_df.Q[testex-1]
         dialogueSet["turn1"] = valid_df.A[testex-1]
         dialogueSet["turn2"] = valid_df.Q[testex]
-        dialogueSet["model_retrieved_answers"] = list(train_df.Utterance[Qids])
-        dialogueSet["scores"] = list(np.sort(y[testex], axis=0)[::-1][:10])
+        if ga:
+            dialogueSet["model_retrieved_answers"] = valid_df.A[testex]
+            dialogueSet["scores"] = [1]
+        else:
+            Qids = np.argsort(y[testex], axis=0)[::-1][:10]
+            dialogueSet["model_retrieved_answers"] = list(train_df.Utterance[Qids])
+            dialogueSet["scores"] = list(np.sort(y[testex], axis=0)[::-1][:10])
         dialogues.append(dialogueSet.copy()) 
     import json
     with open(filepath, 'w') as fout:
         json.dump(dialogues , fout)
 
+saveJsonDialogues(filepath='data/devGoldDialogues.json', ga=True)
 saveJsonDialogues('data/devTfIdfDialogues.json')
 
 ###### BM25 ######
