@@ -5,3 +5,16 @@ dialogue_data/
 InferSent/
 models/
 mturk/
+
+InferSent/
+../web-player-four-avatars/arabic_log.tsv
+../web-player-four-avatars/english_log.tsv
+../web-recorder/package-lock.json
+../web-recorder/public/template-scripts/temp_file.json
+../margarita-dialogue-corpus.zip
+../models/
+../web-player-four-avatars/.RData
+../web-player-four-avatars/.Rhistory
+../web-player-four-avatars/venv/
+../web-player/arabic_log.tsv
+../web-player/static/venv/
