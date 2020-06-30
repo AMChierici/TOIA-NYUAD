@@ -472,6 +472,34 @@ for i in range(3):
 
 
 
+
+# qarelevance
+preds = pd.read_csv('/Users/amc/Documents/glue_data/Margarita_1_100_ratio/valid_results_mrpc_proba.txt', sep='\t', encoding='utf-8')['prediction'].values
+###DO run toia_data_processor.py until row 166
+valid_preds = pd.DataFrame({'q': valid_df['#1 String'].values, 'A': valid_df['#2 String'].values, 'y_pred': preds})
+###DO re-run this script until row 357
+y = []
+for i in range(len(valid_df)):
+    ranks=[]
+    for j in train_corpus:
+        answers = train_df[train_df['Context']==j]['Utterance'].values[0]
+        rank = valid_preds[(valid_preds['A']==answers) & (valid_preds['q']==valid_df.loc[i, 'Q'])]['y_pred'].values[0]
+        ranks.append(rank)
+    y.append(ranks)
+    
+valid_df = test_set_questions_ooctrain(valid_df, train_df)
+
+for i in range(3):
+    for n in [1, 2, 5, 10, 20]:
+        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
+
+saveJsonDialogues('data/devBERTqaRel1to100Dialogues.json')
+
+
+for i in range(3):
+    for n in [1, 2, 5, 10, 20]:
+        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
+        
 ####### Using DNN initialized on ni sentence encoders model + BM25 ######
 def print_metrics(y):                         
     query_precisions, query_recalls, query_precision_at20s, query_recall_at20s, query_precision_at10s, query_recall_at10s,  query_precision_at5s, query_recall_at5s,  query_precision_at2s, query_recall_at2s,  query_precision_at1s, query_recall_at1s, ave_precisions, rec_ranks, check = [], [], [], [], [], [], [], [], [], [], [], [], [], [], []
