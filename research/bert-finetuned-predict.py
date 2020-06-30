@@ -90,7 +90,9 @@ def random_preds(labels):
 
 from sklearn.metrics import *
 from print_confusion_matrix import *
-def print_metrics(y_pred, y_true):
+def print_metrics(y_pred, y_true, proba=True):
+    if proba:
+        y_pred = [1 if y>.5 else 0 for y in y_pred]
     print("\n Recall: ", recall_score(y_true, y_pred, labels=[1, 0]),
         "\n Balanced Accuracy: ", balanced_accuracy_score(y_true, y_pred),
         "\n Macro Precision: ", precision_score(y_true, y_pred, average='macro', labels=[1, 0]),
@@ -103,7 +105,7 @@ def print_metrics(y_pred, y_true):
 preds = random_preds(valid_df['Quality'].values)
 print_metrics(preds, valid_df['Quality'].values)
 
-preds = pd.read_csv('/Users/amc/Documents/glue_data/Margarita_1_1_ratio/valid_results_mrpc.txt', sep='\t', encoding='utf-8')['prediction'].values
+preds = pd.read_csv('/Users/amc/Documents/glue_data/Margarita_1_All_ratio/valid_results_mrpc.txt', sep='\t', encoding='utf-8')['prediction'].values
 print_metrics(preds, valid_df['Quality'].values)
 
 error_analysis = valid_df[valid_df['Quality'].values != preds]
@@ -112,12 +114,13 @@ error_analysis.to_csv('data/error_analysis.txt', sep='\t', encoding='utf-8', ind
 
 import pandas as pd
 # change name for train_df, and run LREC code to get the train_df in the same format as the MDC paper
+preds = pd.read_csv('/Users/amc/Documents/glue_data/Margarita_1_All_ratio/valid_results_mrpc.txt', sep='\t', encoding='utf-8')['prediction'].values
 valid_preds = pd.DataFrame({'q': valid_df['#1 String'].values, 'A': valid_df['#2 String'].values, 'y_pred': preds})
-preds = pd.read_csv('/Users/amc/Documents/glue_data/Margarita_1_100_ratio/test_results_mrpc.txt', sep='\t', encoding='utf-8')['prediction'].values
 
 
 
 #---
+train_corpus = list(np.unique(train_df.Context.values))
 from rank_bm25 import BM25Okapi
 
 bm25_step2 = BM25Okapi(tokenized_corpus)
@@ -155,7 +158,7 @@ for q in valid_df['Q'].values:
 yhat = []
 for q in valid_df['Q'].values:
     mask = valid_preds['q'] == q
-    relevant = valid_preds['y_pred'] == 1
+    relevant = valid_preds['y_pred'] > .5
     subsetkb = train_df['Utterance'].isin(valid_preds[mask&relevant]['A'])
     
     # q-q search
@@ -165,9 +168,9 @@ for q in valid_df['Q'].values:
     else:
         ids = [list(train_corpus).index(q) for q in step1_corpus]
         y_rankings = []
-        for i in range(len(train_corpus)):
+        for i, r in zip(range(len(train_corpus)), valid_preds[mask&relevant]['y_pred'].values):
             if i in ids:
-                y_rankings.append(1)
+                y_rankings.append(r)
             else:
                 y_rankings.append(0)        
         yhat.append(y_rankings) 
