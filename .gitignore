@@ -15,8 +15,7 @@ __pycache__
 *.DS_Store
 **.DS_Store
 
-research/InferSent (untracked content)
-research/mturk/analyzeResults.py
+research/InferSent/*
 web-player-four-avatars/arabic_log.tsv
 web-player-four-avatars/english_log.tsv
 web-recorder/package-lock.json
