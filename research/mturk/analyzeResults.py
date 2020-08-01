@@ -25,25 +25,15 @@ with open(r"{}devBERTqaRel1toAllDialogues.json".format(filePath), "r") as read_f
 with open(r"{}devGoldDialogues.json".format(filePath), "r") as read_file:
     gold = json.load(read_file)
 
-dialogues=model1
-for snippet2, snippet3, snippet4, snippet5, snippet6 in zip(model2, model3, model4, model5, gold):
-    dialogues[snippet2['id']-1]['model_retrieved_answers'] = list(
-        set(dialogues[snippet2['id']-1]['model_retrieved_answers']).union(
-            set(snippet2['model_retrieved_answers']),
-            set(snippet3['model_retrieved_answers']),
-            set(snippet4['model_retrieved_answers']),
-            set(snippet5['model_retrieved_answers']),
-            set(snippet6['model_retrieved_answers'])
-            ))
 
-
-with open(r"{}mTurkResults_2turns.json".format(filePath), 'r') as read_file:
+with open(r"{}mTurkResults_2turns_first100.json".format(filePath), 'r') as read_file:
     results = json.load(read_file)
 
 df = pd.DataFrame(gold)
 
 for i in range(len(results)):
     results[i]['isGold'] = 1 if df[df['id']==results[i]['snippet_id']]['model_retrieved_answers'].values[0][0]==results[i]['predicted_answer'] else 0
+
     
 df = pd.DataFrame(model1)
 for i in range(len(results)):
