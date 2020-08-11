@@ -2,13 +2,18 @@
 # -*- coding: utf-8 -*-
 """
 Created on Fri Jun 26 10:37:17 2020
-
+#thanks to:
+    https://machinelearningmastery.com/how-to-calculate-nonparametric-rank-correlation-in-python/
+    Kendall vs. Spearman: https://datascience.stackexchange.com/questions/64260/pearson-vs-spearman-vs-kendall Kendall more robust, usually lower than Spearman
+    
 @author: amc
 """
 
 import json
 import matplotlib.pyplot as plt
 import pandas as pd
+from scipy.stats import spearmanr, kendalltau
+
 
 filePath = "/Users/amc/Documents/TOIA-NYUAD/research/data/"
 
@@ -90,18 +95,43 @@ for workerId in dfResults[(dfResults['isGold']==1) & (dfResults['avg_answer']<=3
 names=[]
 for i in range(1,6):
     names.append('model{}Score'.format(i))
+    
+### CORRELATIONS ###
 
 print("Excluding unqualified workers")
 for i in names:
     dfTemp = dfResults[(~dfResults['worker_ids'].isin(blackList)) & (dfResults[i]>0)][['avg_answer', i]]
-    print("\n", i, " Correlation: ", dfTemp['avg_answer'].corr(dfTemp[i]))
+    print("\n", i, " Correlation: ", dfTemp['avg_answer'].corr(dfTemp[i], 'spearman'))
     
 print("\n INCLUDING unqualified workers")
 for i in names:
     dfTemp = dfResults[dfResults[i]>0][['avg_answer', i]]
-    print("\n", i, " Correlation: ", dfTemp['avg_answer'].corr(dfTemp[i]))
+    print("\n", i, " Correlation: ", dfTemp['avg_answer'].corr(dfTemp[i], 'spearman'))
+
+alpha = 0.05  
+print("Excluding unqualified workers")
+for i in names:
+    dfTemp = dfResults[(~dfResults['worker_ids'].isin(blackList)) & (dfResults[i]>0)][['avg_answer', i]]
+    coef, p = spearmanr(dfTemp['avg_answer'].values, dfTemp[i].values)
+    # interpret the significance
+    print("\n", i, " Spearmans Correlation: %.3f" % coef)
+    if p > alpha:
+    	print('Samples are uncorrelated (fail to reject H0) p=%.3f' % p)
+    else:
+    	print('Samples are correlated (reject H0) p=%.3f' % p)
+        
+for i in names:
+    dfTemp = dfResults[(~dfResults['worker_ids'].isin(blackList)) & (dfResults[i]>0)][['avg_answer', i]]
+    coef, p = kendalltau(dfTemp['avg_answer'].values, dfTemp[i].values)
+    # interpret the significance
+    print("\n", i, " Kendall Correlation: %.3f" % coef)
+    if p > alpha:
+    	print('Samples are uncorrelated (fail to reject H0) p=%.3f' % p)
+    else:
+    	print('Samples are correlated (reject H0) p=%.3f' % p)
+    
     
 dfResults.to_csv('data/dfResults.txt', sep='\t', encoding='utf-8', index=False)
     
 
-    
+### FOR WHICH QUESTIONS THERE IS LESS AGREEABLENESS? CoV by Q, check what they are, then calc. corr for cov high and small ###  
