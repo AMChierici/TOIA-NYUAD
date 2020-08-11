@@ -422,7 +422,7 @@ saveJsonDialogues('data/devBm25Dialogues.json')
 
 
 ########## USING BERT ##########
-model_path = '/Users/amc/Documents/fine_tuned_models/bert_text_classification/Margarita_1toAll/'
+model_path = '/Users/amc/Documents/fine_tuned_models/bert_text_classification/Margarita_1to100/'
 # Load pre-trained model tokenizer (vocabulary)
 tokenizer = BertTokenizer.from_pretrained(model_path)
 # Load pre-trained model (weights)
@@ -499,7 +499,17 @@ saveJsonDialogues('data/devBERTqaRel1to100Dialogues.json')
 for i in range(3):
     for n in [1, 2, 5, 10, 20]:
         print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
+  
         
+#RANDOM
+import random as rd
+tmp = list(range(1,1+len(train_corpus)))
+y_random = [rd.sample(tmp, len(tmp)) for x in range(len(valid_df))] 
+for i in range(3):
+    for n in [1, 2, 5, 10, 20]:
+        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y_random, valid_df.WOzAnswers.values, n, thr=0)[i]))
+
+ 
 ####### Using DNN initialized on ni sentence encoders model + BM25 ######
 def print_metrics(y):                         
     query_precisions, query_recalls, query_precision_at20s, query_recall_at20s, query_precision_at10s, query_recall_at10s,  query_precision_at5s, query_recall_at5s,  query_precision_at2s, query_recall_at2s,  query_precision_at1s, query_recall_at1s, ave_precisions, rec_ranks, check = [], [], [], [], [], [], [], [], [], [], [], [], [], [], []
