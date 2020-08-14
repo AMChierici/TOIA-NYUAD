@@ -12,6 +12,7 @@ Created on Fri Jun 26 10:37:17 2020
 import json
 import matplotlib.pyplot as plt
 import pandas as pd
+import numpy as np
 from scipy.stats import spearmanr, kendalltau
 
 
@@ -31,7 +32,7 @@ with open(r"{}devGoldDialogues.json".format(filePath), "r") as read_file:
     gold = json.load(read_file)
 
 
-with open(r"{}mTurkResults_2turns_first100.json".format(filePath), 'r') as read_file:
+with open(r"{}mTurkResults_2turns_all.json".format(filePath), 'r') as read_file:
     results = json.load(read_file)
 
 df = pd.DataFrame(gold)
@@ -131,7 +132,67 @@ for i in names:
     	print('Samples are correlated (reject H0) p=%.3f' % p)
     
     
-dfResults.to_csv('data/dfResults.txt', sep='\t', encoding='utf-8', index=False)
+#dfResults.to_csv('data/dfResults.txt', sep='\t', encoding='utf-8', index=False)
     
 
 ### FOR WHICH QUESTIONS THERE IS LESS AGREEABLENESS? CoV by Q, check what they are, then calc. corr for cov high and small ###  
+
+def CoV(x):
+    # x is a list or numpy array
+    return np.std(x)/np.mean(x)
+    
+dfResults['lsCovs'] = [CoV(x) for x in dfResults['answers']]
+print(dfResults[(~dfResults['worker_ids'].isin(blackList))].describe())
+
+upThr = .514259
+loThr = .204124
+
+A = np.unique(dfResults[(~dfResults['worker_ids'].isin(blackList)) & (dfResults['lsCovs']>intThr)]['last_turn'])
+B = np.unique(dfResults[(~dfResults['worker_ids'].isin(blackList)) & (dfResults['lsCovs']<=loThr)]['last_turn'])
+
+print(
+      len(set(set(A) & set(B))), '\n',
+      len(set(A)), '\n',
+      len(set(B))
+      )
+#set(A) - set(set(A) & set(B)) #questions that go well with many answers (check if true)
+#set(B) - set(set(A) & set(B)) #question that go well with only a few answers (check if true)
+print(
+      set(A) - set(set(A) & set(B)), '\n==============\n',
+      set(B) - set(set(A) & set(B))
+      )
+
+A = dfResults[(~dfResults['worker_ids'].isin(blackList)) & (dfResults['lsCovs']>intThr)]['predicted_answer']
+B = dfResults[(~dfResults['worker_ids'].isin(blackList)) & (dfResults['lsCovs']<=loThr)]['predicted_answer']
+
+print(
+      len(set(set(A) & set(B))), '\n',
+      len(set(A)), '\n',
+      len(set(B))
+      )
+#set(A) - set(set(A) & set(B)) #answers that go well with many questions (check if true)
+#set(B) - set(set(A) & set(B)) #answers that go well with only a few questions (check if true)
+print(
+      set(A) - set(set(A) & set(B)), '\n==============\n',
+      set(B) - set(set(A) & set(B))
+      )
+
+
+
+#seems no trends here
+
+# other things to check:
+    ###cov for avg answer = good answers, bad, and so-so
+    ###correlation for different quantiles of cov
+    ###think about measuring the variability of answer per given question (e.g., words look very different / very similar (cosine sim usin bert / use model trained on semantic sim)) --is cov correlated well with this? what I expect is high cov corr with small semantic variability between answers.
+    
+    
+
+
+
+
+
+
+
+
+
