@@ -6,7 +6,7 @@ InferSent/
 models/
 mturk/
 
-InferSent/
+InferSent/*
 ../web-player-four-avatars/arabic_log.tsv
 ../web-player-four-avatars/english_log.tsv
 ../web-recorder/package-lock.json
