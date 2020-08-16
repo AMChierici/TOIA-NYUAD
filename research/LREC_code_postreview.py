@@ -31,7 +31,6 @@ from sklearn.metrics import *
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier,GradientBoostingClassifier
 # Load model
-from InferSent.encoder.models import InferSent
 nltk.download('stopwords')
 ps = SnowballStemmer('english')
 warnings.filterwarnings('ignore')
@@ -321,7 +320,7 @@ def cosine(u, v):
 #    return np.linalg.norm(u-v)
 
 
-def INFERSENTPredictor_new(context, utterances):
+def LMPredictor_new(context, utterances):
     # The dot product measures the similarity of the resulting vectors
     result = [cosine(context, utt) for utt in utterances]
     # Sort by top results and return the indices in descending order
@@ -450,7 +449,7 @@ for text in valid_df.Context.values:
 valid_embeddings = np.array(valid_embeddings)
 
  
-y = [INFERSENTPredictor_new(valid_embeddings[x], train_embeddings) for x in range(len(valid_embeddings))]
+y = [LMPredictor_new(valid_embeddings[x], train_embeddings) for x in range(len(valid_embeddings))]
 for i in range(3):
     for n in [1, 2, 5, 10, 20]:
         print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
@@ -465,7 +464,7 @@ for text in train_df.Utterance.values:
     train_embeddings.append(bertembed(text)[0])
 train_embeddings = np.array(train_embeddings)
  
-y = [INFERSENTPredictor_new(valid_embeddings[x], train_embeddings) for x in range(len(valid_embeddings))]
+y = [LMPredictor_new(valid_embeddings[x], train_embeddings) for x in range(len(valid_embeddings))]
 for i in range(3):
     for n in [1, 2, 5, 10, 20]:
         print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
