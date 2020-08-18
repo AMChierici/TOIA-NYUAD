@@ -177,11 +177,12 @@ print(
       set(B) - set(set(A) & set(B))
       )
 
-
+dfResults.to_csv('data/dfResults.txt', sep='\t', encoding='utf-8', index=False)
 
 #seems no trends here
 
 # other things to check:
+    ###use annotations as model and calc Recall@x
     ###cov for avg answer = good answers, bad, and so-so
     ###correlation for different quantiles of cov
     ###think about measuring the variability of answer per given question (e.g., words look very different / very similar (cosine sim usin bert / use model trained on semantic sim)) --is cov correlated well with this? what I expect is high cov corr with small semantic variability between answers.

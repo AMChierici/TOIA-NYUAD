@@ -517,7 +517,9 @@ saveJsonDialogues('data/devBERTqaRel1to100Dialogues.json')
 for i in range(3):
     for n in [1, 2, 5, 10, 20]:
         print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
-  
+
+outputPred(y, valid_df.WOzAnswers.values, train_corpus, '/Users/amc/Documents/TOIA-NYUAD/research/data/devBERTqaRel1to100Results.csv', 20, valid_df.Context.values)
+
         
 #RANDOM
 import random as rd
