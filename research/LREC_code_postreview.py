@@ -347,27 +347,6 @@ def bertembed(text):
     #can add embedding of token [CLS], and of [SEP]
     return(sentence_embedding.tolist())
 
-
-#-- EOfn --#  ###NOTE: need to add to the dialogues TRAIN the wizard answers
-
-
-
-valid_df = multiturndialogues.loc[multiturndialogues.Experiment.isin(["TRAIN"])]
-valid_df.reset_index(level=None, drop=True, inplace=True)
-valid_df = test_set_questions_ooctrain(valid_df, train_df)
-
-# Train TFIDF predictor
-pred = TFIDFPredictor()
-train_corpus = train_df.Context.values
-pred.train(train_corpus)
-
-y = [pred.predict(valid_df.Context[x], list(train_corpus)) for x in range(len(valid_df))]
-
-# Evaluate TFIDF predictor QUESTION SIMILARITY (use train_df.Utterance.values for ANSWER SIM)
-for i in range(3):
-    for n in [1, 2, 5, 10, 20]:
-        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
-
 def saveJsonDialogues(filepath, ga=False):
     valid_df = multiturndialogues.loc[multiturndialogues.Experiment.isin(["TRAIN"])]
     valid_df.reset_index(level=None, drop=True, inplace=True)
@@ -396,6 +375,46 @@ def saveJsonDialogues(filepath, ga=False):
     import json
     with open(filepath, 'w') as fout:
         json.dump(dialogues , fout)
+        
+def outputPred(y, y_test, lsTraincorpus, txtFilepath, intK, lsQuestions):
+    lsSortedScores = []
+    lsSelections = []
+    lsLabels = []
+    lsQuestions = []
+    for lsScores, labels, txtQuestion in zip(y, y_test, lsQuestions):
+        lsPredsIndices = list(np.argsort(lsScores, axis=0)[::-1][:intK])
+        lsSortedScores.extend(list(np.sort(lsScores, axis=0)[::-1][:intK]))
+        lsSelections.extend([lsTraincorpus[i] for i in lsPredsIndices])
+        lsLabels.extend(list(labels.extend(['']*(intK - len(labels)))))
+        lsQuestions.extend([txtQuestion]*intK)
+    df = pd.DataFrame({
+        'Question': lsQuestions,
+        'PredAnswers': lsSelections,
+        'Scores': lsSortedScores,
+        'AnnotatedAnswers':lsLabels
+        })
+    df.to_csv(txtFilepath, encoding='utf-8')
+
+
+#-- EOfn --#  ###NOTE: need to add to the dialogues TRAIN the wizard answers
+
+
+
+valid_df = multiturndialogues.loc[multiturndialogues.Experiment.isin(["TRAIN"]) & multiturndialogues.Mode.isin(["PER"])]
+valid_df.reset_index(level=None, drop=True, inplace=True)
+valid_df = test_set_questions_ooctrain(valid_df, train_df)
+
+# Train TFIDF predictor
+pred = TFIDFPredictor()
+train_corpus = train_df.Context.values
+pred.train(train_corpus)
+
+y = [pred.predict(valid_df.Context[x], list(train_corpus)) for x in range(len(valid_df))]
+
+# Evaluate TFIDF predictor QUESTION SIMILARITY (use train_df.Utterance.values for ANSWER SIM)
+for i in range(3):
+    for n in [1, 2, 5, 10, 20]:
+        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
 
 saveJsonDialogues(filepath='data/devGoldDialogues.json', ga=True)
 saveJsonDialogues('data/devTfIdfDialogues.json')
@@ -476,7 +495,7 @@ for i in range(3):
 preds = pd.read_csv('/Users/amc/Documents/glue_data/Margarita_1_100_ratio/valid_results_mrpc_proba.txt', sep='\t', encoding='utf-8')['prediction'].values
 ###DO run toia_data_processor.py until row 166
 valid_preds = pd.DataFrame({'q': valid_df['#1 String'].values, 'A': valid_df['#2 String'].values, 'y_pred': preds})
-###DO re-run this script until row 357
+###DO re-run this script until row 404
 y = []
 for i in range(len(valid_df)):
     ranks=[]
