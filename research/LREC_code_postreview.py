@@ -380,15 +380,19 @@ def outputPred(y, y_test, lsTraincorpus, txtFilepath, intK, lsQuestions):
     lsSortedScores = []
     lsSelections = []
     lsLabels = []
-    lsQuestions = []
-    for lsScores, labels, txtQuestion in zip(y, y_test, lsQuestions):
+    for lsScores, labels in zip(y, y_test):
+        lsTmp = [index for index in set(labels) if index!='']
         lsPredsIndices = list(np.argsort(lsScores, axis=0)[::-1][:intK])
         lsSortedScores.extend(list(np.sort(lsScores, axis=0)[::-1][:intK]))
         lsSelections.extend([lsTraincorpus[i] for i in lsPredsIndices])
-        lsLabels.extend(list(labels.extend(['']*(intK - len(labels)))))
-        lsQuestions.extend([txtQuestion]*intK)
+        lsTmp = list(set([lsTraincorpus[i] for i in lsTmp]))
+        lsTmp.extend(['']*(intK - len(lsTmp)))
+        lsLabels.extend(lsTmp)
+    lsRepQuestions = []
+    for txtQuestion in lsQuestions:
+        lsRepQuestions.extend([txtQuestion]*intK)
     df = pd.DataFrame({
-        'Question': lsQuestions,
+        'Question': lsRepQuestions,
         'PredAnswers': lsSelections,
         'Scores': lsSortedScores,
         'AnnotatedAnswers':lsLabels
@@ -495,7 +499,7 @@ for i in range(3):
 preds = pd.read_csv('/Users/amc/Documents/glue_data/Margarita_1_100_ratio/valid_results_mrpc_proba.txt', sep='\t', encoding='utf-8')['prediction'].values
 ###DO run toia_data_processor.py until row 166
 valid_preds = pd.DataFrame({'q': valid_df['#1 String'].values, 'A': valid_df['#2 String'].values, 'y_pred': preds})
-###DO re-run this script until row 404
+###DO re-run this script until row 408
 y = []
 for i in range(len(valid_df)):
     ranks=[]
