@@ -331,7 +331,7 @@ def outputPred(y, y_test, lsTraincorpus, txtFilepath, intK, lsQuestions):
 
 
 
-valid_df = multiturndialogues.loc[multiturndialogues.Experiment.isin(["TRAIN"]) & multiturndialogues.Mode.isin(["PER"])]
+valid_df = multiturndialogues.loc[multiturndialogues.Experiment.isin(["TRAIN"])]# & multiturndialogues.Mode.isin(["PER"])]
 valid_df.reset_index(level=None, drop=True, inplace=True)
 valid_df = test_set_questions_ooctrain(valid_df, train_df)
 
@@ -423,10 +423,10 @@ for i in range(3):
 
 
 # qarelevance
-preds = pd.read_csv('/Users/amc/Documents/glue_data/Margarita_1_100_ratio/valid_results_mrpc_proba.txt', sep='\t', encoding='utf-8')['prediction'].values
+preds = pd.read_csv('/Users/amc/Documents/glue_data/Margarita_1_All_ratio/valid_results_mrpc.txt', sep='\t', encoding='utf-8')['prediction'].values
 ###DO run toia_data_processor.py until row 166
 valid_preds = pd.DataFrame({'q': valid_df['#1 String'].values, 'A': valid_df['#2 String'].values, 'y_pred': preds})
-###DO re-run this script until row 408
+###DO re-run this script until row 335
 y = []
 for i in range(len(valid_df)):
     ranks=[]
