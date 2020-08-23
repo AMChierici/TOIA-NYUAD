@@ -147,7 +147,7 @@ print(dfResults[(~dfResults['worker_ids'].isin(blackList))].describe())
 upThr = .514259
 loThr = .204124
 
-A = np.unique(dfResults[(~dfResults['worker_ids'].isin(blackList)) & (dfResults['lsCovs']>intThr)]['last_turn'])
+A = np.unique(dfResults[(~dfResults['worker_ids'].isin(blackList)) & (dfResults['lsCovs']>upThr)]['last_turn'])
 B = np.unique(dfResults[(~dfResults['worker_ids'].isin(blackList)) & (dfResults['lsCovs']<=loThr)]['last_turn'])
 
 print(
@@ -161,8 +161,9 @@ print(
       set(A) - set(set(A) & set(B)), '\n==============\n',
       set(B) - set(set(A) & set(B))
       )
+#seems this shows where the model do well or not. Because, the answers raters rated are only the top 10 selections from 5 models, so where there is high disagreement, it means the models produced answers that is hard to agree upon. When there is low agreement, models might do all pretty well. --need to see human ratings by level of agreement, e.g., is it easier to agree on high or low ratings? Or, in other words, do all agree/disagree in correct answers, non correct, or both alike? Moreover, shall we introduce a random top 10 model to study the effect of model selections on disagreemnt?
 
-A = dfResults[(~dfResults['worker_ids'].isin(blackList)) & (dfResults['lsCovs']>intThr)]['predicted_answer']
+A = dfResults[(~dfResults['worker_ids'].isin(blackList)) & (dfResults['lsCovs']>upThr)]['predicted_answer']
 B = dfResults[(~dfResults['worker_ids'].isin(blackList)) & (dfResults['lsCovs']<=loThr)]['predicted_answer']
 
 print(
@@ -177,12 +178,84 @@ print(
       set(B) - set(set(A) & set(B))
       )
 
+#these are groups of answers that generate more disagreement (A) and less disagreements (B).
+
 dfResults.to_csv('data/dfResults.txt', sep='\t', encoding='utf-8', index=False)
 
-#seems no trends here
+lsCheck = []
+for q in set(dfResults['last_turn']):
+    #q = 'Oh I see. I see. Yeah. Yeah. So how did you adapt to the Arabic culture?'
+    answers = list(dfResults[dfResults['last_turn'] == q]['predicted_answer'])
+    scores = list(dfResults[dfResults['last_turn'] == q]['avg_answer'])
+    selindices = np.argsort(scores, axis=0)[::-1]
+    sortescores = np.sort(scores, axis=0)[::-1]
+    mask = selindices[sortescores > 3.5]
+    lsCheck.append(len(mask))
+print(max(lsCheck))
+    
+dicDf = {
+    'Q' : [],
+    'BA1' : [],
+    'BA2' : [],
+    'BA3' : [],
+    'BA4' : [],
+    'BA5' : [],
+    'BA6' : [],
+    'BA7' : [],
+    'BA8' : [],
+    'BA9' : [],
+    'BA10' : [],
+    'BA11' : [],
+    'BA12' : [],
+    'BA13' : [],
+    'BA14' : [],
+    'BA15' : []
+    }
+
+for q in set(dfResults['last_turn']):
+    #q = 'Oh I see. I see. Yeah. Yeah. So how did you adapt to the Arabic culture?'
+    dicDf['Q'].append(q)
+    answers = list(dfResults[dfResults['last_turn'] == q]['predicted_answer'])
+    scores = list(dfResults[dfResults['last_turn'] == q]['avg_answer'])
+    selindices = np.argsort(scores, axis=0)[::-1]
+    sortescores = np.sort(scores, axis=0)[::-1]
+    mask = selindices[sortescores > 3.5]
+    for i in range(15):
+        try:
+            dicDf['BA{}'.format(1 + i)].append(answers[mask[i]])
+        except IndexError:
+            dicDf['BA{}'.format(1 + i)].append(np.nan)
+            
+dfCrowdAnnotations = pd.DataFrame(dicDf)
+        
+#borrow test_set_questions_ooctrain function from LREC_code_postreview.py and edit index
+def transformDialogues(dfCrowdAnnotations, train_df):
+    # modified to use index of answers in test WOzAnswers --> replaced with WOzAnswersIDs
+    Context, WOzAnswersIDs = [], []
+    for example_id in range(len(dfCrowdAnnotations)):
+        exampleWOzAnswers = list(dfCrowdAnnotations.iloc[example_id, 1:].values)
+#        if not allnull(exampleWOzAnswers):
+        tmp_WAs = []
+        allAs = list(train_df.Utterance.values)
+        for distr in allAs:
+            if distr in exampleWOzAnswers:
+                tmp_WAs.append(allAs.index(distr))
+        Context.append(dfCrowdAnnotations.iloc[example_id, 0])
+        WOzAnswersIDs.append(tmp_WAs)
+    return pd.DataFrame({'Context':Context, 'WOzAnswers':WOzAnswersIDs})  
+
+#run LREC_code_postreview until row 300
+valid_df = transformDialogues(dfCrowdAnnotations, train_df)
+
+#run LREC_code_postreview post row 337 to get results
+
+## OCCHIO A come si calcoalno i recall@k. il numero di esempi non dovrebbe essere il numero di uniche q-a pairs annotate? La funzione al momento calcola solo il numero di q...
+
+
+###use annotations as model and calc Recall@x
+#build dataset like multiturn dialogues with BA1 - 3 (Assuming 3 is still acceptable)
 
 # other things to check:
-    ###use annotations as model and calc Recall@x
     ###cov for avg answer = good answers, bad, and so-so
     ###correlation for different quantiles of cov
     ###think about measuring the variability of answer per given question (e.g., words look very different / very similar (cosine sim usin bert / use model trained on semantic sim)) --is cov correlated well with this? what I expect is high cov corr with small semantic variability between answers.
