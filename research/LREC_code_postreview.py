@@ -183,6 +183,46 @@ def evaluate_recall_thr_star(y, y_test, k=10, thr=0.7):
             num_correct_nonans += 1
     return (num_correct_ans+num_correct_nonans)/num_examples, num_correct_ans, num_correct_nonans
 
+def print_retrieval_metrics(y, valid_df, KBanswers):                         
+    query_precisions, query_recalls, ave_precisions, rec_ranks, check = [], [], [], [], []
+    for query, retrieval_scores in zip(list(valid_df.Q.values), y):
+        # documents=corpus
+        sorted_retrieval_scores = np.sort(retrieval_scores, axis=0)[::-1]
+        if sorted_retrieval_scores[0]==0:
+            sorted_retrieved_documents = []
+            relevant_documents = []
+            query_precisions.append(0)
+            query_recalls.append(0)
+            ave_precisions.append(0)
+            rec_ranks.append(0)
+        else:
+            sorted_id_documents = np.argsort(retrieval_scores, axis=0)[::-1]
+            sorted_id_retreved_documents = sorted_id_documents[sorted_retrieval_scores > 0]
+            sorted_retrieved_documents = [KBanswers[i] for i in sorted_id_retreved_documents]
+            columns_annotations = valid_df.columns[valid_df.columns.get_loc('BA1'):]
+            relevant_documents = list(valid_df[columns_annotations].loc[valid_df.Q.values==query].values[0])
+            # relevant_documents = list(train_df[train_df['Utterance'].isin(relevant_answers)].Context)    
+            query_precisions.append(len(set(relevant_documents) & set(sorted_retrieved_documents)) / len(set(sorted_retrieved_documents)))
+            query_recalls.append(len(set(relevant_documents) & set(sorted_retrieved_documents)) / len(set(relevant_documents)))    
+            p_at_ks, rel_at_ks = [], []
+            for k in range(1, 1+len(set(sorted_retrieved_documents))):
+                p_at_ks.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:k])) / len(set(sorted_retrieved_documents[:k])))
+                rel_at_ks.append(1 if sorted_retrieved_documents[k-1] in relevant_documents else 0)
+            ave_precisions.append(sum([p*r for p, r in zip(p_at_ks, rel_at_ks)])/len(set(relevant_documents)))
+            if query_recalls[-1]>0:
+                for r, doc in enumerate(sorted_retrieved_documents):
+                    if doc in relevant_documents:
+                        rec_ranks.append(1/(1+r))
+                        break
+                else:
+                    rec_ranks.append(0)
+        check.append([query, sorted_retrieved_documents[:3], relevant_documents])
+            
+    print("Mean Average Precision (MAP): ", np.mean(ave_precisions))
+    print("Mean Reciprocal Rank (MRR): ", np.mean(rec_ranks))
+    print("Mean precision: ", np.mean(query_precisions))
+    print("Mean recall: ", np.mean(query_recalls))
+
 
 class TFIDFPredictor:
     def __init__(self):
@@ -378,16 +418,16 @@ for i in range(3):
 
 
 # qarelevance
-preds = pd.read_csv('/Users/amc/Documents/glue_data/Margarita_1_100_ratio/valid_results_mrpc_proba.txt', sep='\t', encoding='utf-8')['prediction'].values
+preds = pd.read_csv('/Users/amc/Documents/glue_data/Margarita_1_All_ratio/valid_results_mrpc.txt', sep='\t', encoding='utf-8')['prediction'].values
 ###DO run toia_data_processor.py until row 166
 valid_preds = pd.DataFrame({'q': valid_df['#1 String'].values, 'A': valid_df['#2 String'].values, 'y_pred': preds})
-###DO re-run this script until row 297
+###DO re-run this script until row 335 or analyzeResults.py row 268 for view from the crowd
 y = []
 for i in range(len(valid_df)):
     ranks=[]
     for j in train_corpus:
         answers = train_df[train_df['Context']==j]['Utterance'].values[0]
-        rank = valid_preds[(valid_preds['A']==answers) & (valid_preds['q']==valid_df.loc[i, 'Q'])]['y_pred'].values[0]
+        rank = valid_preds[(valid_preds['A']==answers) & (valid_preds['q']==valid_df.loc[i, 'Q'])]['y_pred'].values[0]      #change 'Q' to 'Context' when running for Crowd annotations
         ranks.append(rank)
     y.append(ranks)
     
@@ -398,7 +438,7 @@ for i in range(3):
         print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
 
 saveJsonDialogues('data/devBERTqaRel1to100Dialogues.json')
-y=y_qa1to100
+
 for i in range(3):
     for n in [1, 2, 5, 10, 20]:
         print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
@@ -419,76 +459,7 @@ for i in range(3):
         print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y_random, valid_df.WOzAnswers.values, n, thr=0)[i]))
 
 
-
-
-####### Using DNN initialized on ni sentence encoders model + BM25 ######
-def print_metrics(y):                         
-    query_precisions, query_recalls, query_precision_at20s, query_recall_at20s, query_precision_at10s, query_recall_at10s,  query_precision_at5s, query_recall_at5s,  query_precision_at2s, query_recall_at2s,  query_precision_at1s, query_recall_at1s, ave_precisions, rec_ranks, check = [], [], [], [], [], [], [], [], [], [], [], [], [], [], []
-    for query, retrieval_scores in zip(list(valid_df.Q.values), y):
-        # documents=corpus
-        sorted_retrieval_scores = np.sort(retrieval_scores, axis=0)[::-1]
-        if sorted_retrieval_scores[0]==0:
-            sorted_retrieved_documents = []
-            relevant_documents = []
-            query_precisions.append(0)
-            query_recalls.append(0)
-            query_precision_at20s.append(0)
-            query_precision_at10s.append(0)
-            query_precision_at5s.append(0)
-            query_precision_at2s.append(0)
-            query_precision_at1s.append(0)
-            query_recall_at20s.append(0)
-            query_recall_at10s.append(0)
-            query_recall_at5s.append(0)
-            query_recall_at2s.append(0)
-            query_recall_at1s.append(0)
-            ave_precisions.append(0)
-            rec_ranks.append(0)
-        else:
-            sorted_id_documents = np.argsort(retrieval_scores, axis=0)[::-1]
-            sorted_id_retreved_documents = sorted_id_documents[sorted_retrieval_scores>0]
-            sorted_retrieved_documents = [KBanswers[i] for i in sorted_id_retreved_documents]
-            relevant_documents = list(valid_df[['BA1', 'BA2', 'BA3', 'BA4', 'BA5', 'BA6']].loc[valid_df.Q.values==query].values[0])
-            # relevant_documents = list(train_df[train_df['Utterance'].isin(relevant_answers)].Context)    
-            query_precisions.append(len(set(relevant_documents) & set(sorted_retrieved_documents)) / len(set(sorted_retrieved_documents)))
-            query_recalls.append(len(set(relevant_documents) & set(sorted_retrieved_documents)) / len(set(relevant_documents)))    
-            query_precision_at20s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:20])) / len(set(sorted_retrieved_documents[:20])))
-            query_precision_at10s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:10])) / len(set(sorted_retrieved_documents[:10])))
-            query_precision_at5s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:5])) / len(set(sorted_retrieved_documents[:5])))
-            query_precision_at2s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:2])) / len(set(sorted_retrieved_documents[:2])))
-            query_precision_at1s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:1])) / len(set(sorted_retrieved_documents[:1])))
-            # query_recall_at20s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:20])) / min(len(set(relevant_documents)), 20))
-            # query_recall_at10s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:10])) / min(len(set(relevant_documents)), 10))
-            # query_recall_at5s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:5])) / min(len(set(relevant_documents)), 5))
-            # query_recall_at2s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:2])) / min(len(set(relevant_documents)), 2))
-            query_recall_at1s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:1])) / min(len(set(relevant_documents)), 1))
-            p_at_ks, rel_at_ks = [], []
-            for k in range(1, 1+len(set(sorted_retrieved_documents))):
-                p_at_ks.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:k])) / len(set(sorted_retrieved_documents[:k])))
-                rel_at_ks.append(1 if sorted_retrieved_documents[k-1] in relevant_documents else 0)
-            ave_precisions.append(sum([p*r for p, r in zip(p_at_ks, rel_at_ks)])/len(set(relevant_documents)))
-            if query_recalls[-1]>0:
-                for r, doc in enumerate(sorted_retrieved_documents):
-                    if doc in relevant_documents:
-                        rec_ranks.append(1/(1+r))
-                        break
-                else:
-                    rec_ranks.append(0)
-        check.append([query, sorted_retrieved_documents[:3], relevant_documents])
-            
-    print("Mean Average Precision (MAP): ", np.mean(ave_precisions))
-    print("Mean Reciprocal Rank (MRR): ", np.mean(rec_ranks))
-    print("Mean precision: ", np.mean(query_precisions))
-    print("Mean recall: ", np.mean(query_recalls))
-    print("Mean precision @20: ", np.mean(query_precision_at20s))
-    print("Mean precision @10: ", np.mean(query_precision_at10s))
-    print("Mean precision @5: ", np.mean(query_precision_at5s))
-    print("Mean precision @2: ", np.mean(query_precision_at2s))
-    print("Mean precision @1: ", np.mean(query_precision_at1s))
-    # print("Mean recall @20: ", np.mean(query_recall_at20s))
-    # print("Mean recall @10: ", np.mean(query_recall_at10s))
-    # print("Mean recall @5: ", np.mean(query_recall_at5s))
-    # print("Mean recall @2: ", np.mean(query_recall_at2s))
-    print("Mean recall @1: ", np.mean(query_recall_at1s))
+#### for crowd datasets #####    
+print_retrieval_metrics(y, dfCrowdAnnotations, train_df.Utterance.values)
 
 
