@@ -182,6 +182,9 @@ print(
 
 dfResults.to_csv('data/dfResults.txt', sep='\t', encoding='utf-8', index=False)
 
+###use crowd ratings as annotations and and calc Recall@x
+#build dataset like multiturn dialogues with BA1 - 3 (Assuming 3 is still acceptable)
+
 lsCheck = []
 for q in set(dfResults['last_turn']):
     #q = 'Oh I see. I see. Yeah. Yeah. So how did you adapt to the Arabic culture?'
@@ -189,7 +192,7 @@ for q in set(dfResults['last_turn']):
     scores = list(dfResults[dfResults['last_turn'] == q]['avg_answer'])
     selindices = np.argsort(scores, axis=0)[::-1]
     sortescores = np.sort(scores, axis=0)[::-1]
-    mask = selindices[sortescores > 3.5]
+    mask = selindices[sortescores >= 3.5]
     lsCheck.append(len(mask))
 print(max(lsCheck))
     
@@ -219,7 +222,7 @@ for q in set(dfResults['last_turn']):
     scores = list(dfResults[dfResults['last_turn'] == q]['avg_answer'])
     selindices = np.argsort(scores, axis=0)[::-1]
     sortescores = np.sort(scores, axis=0)[::-1]
-    mask = selindices[sortescores > 3.5]
+    mask = selindices[sortescores >= 3.5]
     for i in range(15):
         try:
             dicDf['BA{}'.format(1 + i)].append(answers[mask[i]])
@@ -244,16 +247,29 @@ def transformDialogues(dfCrowdAnnotations, train_df):
         WOzAnswersIDs.append(tmp_WAs)
     return pd.DataFrame({'Context':Context, 'WOzAnswers':WOzAnswersIDs})  
 
-#run LREC_code_postreview until row 300
-valid_df = transformDialogues(dfCrowdAnnotations, train_df)
+# #run LREC_code_postreview until row 300
+# valid_df = transformDialogues(dfCrowdAnnotations, train_df)
 
 #run LREC_code_postreview post row 337 to get results
-
 ## OCCHIO A come si calcoalno i recall@k. il numero di esempi non dovrebbe essere il numero di uniche q-a pairs annotate? La funzione al momento calcola solo il numero di q...
+    ## Edited evaluate_recall_thr to use as no. of examples all the q-a's annotated: Recall@k = (# of recommended items @k that are relevant) / (total # of relevant items). I could also calculate Precision@k = (# of recommended items @k that are relevant) / (# of recommended items @k) but need to define threshold (what is recommended vs. what's not)
+###Note: cannot really use crowd annotations as dev set annotations because I should change the train set too. I should add more qa pairs in train according to what has been annotated.
+#Let's do it!
+ 
+def updateTrain(df):
+    #get questions from old train that are answered by margarita's annotations.
+    df = df.loc[dfResults.avg_answer >= 3.5, ['last_turn', 'predicted_answer']]
+    df.reset_index(level=None, drop=True, inplace=True)
+    df.rename(columns = {'last_turn' : 'Context', 'predicted_answer' : 'Utterance'}, inplace = True) 
+    return df.loc[:, ['Context', 'Utterance']]
+
+#run LREC_code_postreview until row 277
+train_df = updateTrain(dfResults)
+valid_df = transformDialogues(dfCrowdAnnotations, train_df)
+### using tf-idf we can see that recalls @1,2,5 are actually worse than margarita's annotations, and recalls @10 and @20 are the same. Looks like the technique is robust by change of datasets, by low k recalls are weaker because annotations too generous? Is it worth do the same job for the BERT qa relevance (lots of work)
 
 
 ###use annotations as model and calc Recall@x
-#build dataset like multiturn dialogues with BA1 - 3 (Assuming 3 is still acceptable)
 
 # other things to check:
     ###cov for avg answer = good answers, bad, and so-so
