@@ -108,66 +108,6 @@ train_df = train_df.reset_index()
 multiturndialogues = pd.read_csv('/Users/amc/Documents/TOIA-NYUAD/research/DIALOGUES.csv', encoding='utf-8')
 #update conversation number so that EDU and PER have different count / conversation ID
 multiturndialogues.loc[multiturndialogues.Mode=='EDU', 'Conversation'] = multiturndialogues.loc[multiturndialogues.Mode=='EDU', 'Conversation'] + 10
-
-with pd.option_context('display.max_rows', None, 'display.max_columns', None):
-    print('--------- KB Categories ------------ \n # utterances = {}'.format( pd.crosstab(index=train_df["Category"], columns="count") ))
-
-print('--------- KB TRAIN ------------ \n # utterances = {}'.format(len(train_df.Utterance.values)))
-print('# words = {}'.format(sum([len(tokens) for tokens in [utt.split() for utt in train_df.Utterance.values]])
-      + sum([len(tokens) for tokens in [utt.split() for utt in train_df.Context.values]])))
-print('avg. words per utterance = {}'.format(np.mean([len(tokens) for tokens in [utt.split() for utt in train_df.Utterance.values]])))
-print('avg. words per context = {}'.format(np.mean([len(tokens) for tokens in [utt.split() for utt in train_df.Context.values]])))
-print('# unique questions = {}'.format(len(np.unique(train_df.Context))))
-print('# unique answers = {}'.format(len(np.unique(train_df.Utterance))))
-
-print('--------- DIALOGUES All ------------ \n # utterances = {}'.format(len(multiturndialogues.A.values)))
-print('# words = {}'.format(sum([len(tokens) for tokens in [utt.split() for utt in multiturndialogues.A.values]])
-      + sum([len(tokens) for tokens in [utt.split() for utt in multiturndialogues.Q.values]])))
-print('avg. words per utterance = {}'.format(np.mean([len(tokens) for tokens in [utt.split() for utt in multiturndialogues.A.values]])))
-print('avg. words per context = {}'.format(np.mean([len(tokens) for tokens in [utt.split() for utt in multiturndialogues.Q.values]])))
-conversation_IDs = np.unique(multiturndialogues.Conversation)
-print('min # turns per dialogue = {}'.format(min([len(multiturndialogues.loc[multiturndialogues.Conversation==i]) for i in conversation_IDs])))      
-print('avg # turns per dialogue = {}'.format(np.mean([len(multiturndialogues.loc[multiturndialogues.Conversation==i]) for i in conversation_IDs])))
-
-subset = multiturndialogues.loc[multiturndialogues.Experiment.isin(['TRAIN'])]
-print('--------- DIALOGUES TRAIN ------------ \n # utterances = {}'.format(len(subset.A.values)))
-print('# words = {}'.format(sum([len(tokens) for tokens in [utt.split() for utt in subset.A.values]])
-      + sum([len(tokens) for tokens in [utt.split() for utt in subset.Q.values]])))
-print('avg. words per utterance = {}'.format(np.mean([len(tokens) for tokens in [utt.split() for utt in subset.A.values]])))
-print('avg. words per context = {}'.format(np.mean([len(tokens) for tokens in [utt.split() for utt in subset.Q.values]])))
-conversation_IDs = np.unique(subset.Conversation)
-print('min # turns per dialogue = {}'.format(min([len(subset.loc[subset.Conversation==i]) for i in conversation_IDs])))      
-print('avg # turns per dialogue = {}'.format(np.mean([len(subset.loc[subset.Conversation==i]) for i in conversation_IDs])))
-      
-subset = multiturndialogues.loc[multiturndialogues.Experiment.isin(['TEST'])]
-print('--------- DIALOGUES TEST ------------ \n # utterances = {}'.format(len(subset.A.values)))
-print('# words = {}'.format(sum([len(tokens) for tokens in [utt.split() for utt in subset.A.values]])
-      + sum([len(tokens) for tokens in [utt.split() for utt in subset.Q.values]])))
-print('avg. words per utterance = {}'.format(np.mean([len(tokens) for tokens in [utt.split() for utt in subset.A.values]])))
-print('avg. words per context = {}'.format(np.mean([len(tokens) for tokens in [utt.split() for utt in subset.Q.values]])))
-conversation_IDs = np.unique(subset.Conversation)
-print('min # turns per dialogue = {}'.format(min([len(subset.loc[subset.Conversation==i]) for i in conversation_IDs])))      
-print('avg # turns per dialogue = {}'.format(np.mean([len(subset.loc[subset.Conversation==i]) for i in conversation_IDs])))
-      
-subset = multiturndialogues.loc[multiturndialogues.Mode.isin(['EDU'])]
-print('--------- DIALOGUES UNI MODE ------------ \n # utterances = {}'.format(len(subset.A.values)))
-print('# words = {}'.format(sum([len(tokens) for tokens in [utt.split() for utt in subset.A.values]])
-      + sum([len(tokens) for tokens in [utt.split() for utt in subset.Q.values]])))
-print('avg. words per utterance = {}'.format(np.mean([len(tokens) for tokens in [utt.split() for utt in subset.A.values]])))
-print('avg. words per context = {}'.format(np.mean([len(tokens) for tokens in [utt.split() for utt in subset.Q.values]])))
-conversation_IDs = np.unique(subset.Conversation)
-print('min # turns per dialogue = {}'.format(min([len(subset.loc[subset.Conversation==i]) for i in conversation_IDs])))      
-print('avg # turns per dialogue = {}'.format(np.mean([len(subset.loc[subset.Conversation==i]) for i in conversation_IDs])))
-      
-subset = multiturndialogues.loc[multiturndialogues.Mode.isin(['PER'])]
-print('--------- DIALOGUES PERS MODE ------------ \n # utterances = {}'.format(len(subset.A.values)))
-print('# words = {}'.format(sum([len(tokens) for tokens in [utt.split() for utt in subset.A.values]])
-      + sum([len(tokens) for tokens in [utt.split() for utt in subset.Q.values]])))
-print('avg. words per utterance = {}'.format(np.mean([len(tokens) for tokens in [utt.split() for utt in subset.A.values]])))
-print('avg. words per context = {}'.format(np.mean([len(tokens) for tokens in [utt.split() for utt in subset.Q.values]])))
-conversation_IDs = np.unique(subset.Conversation)
-print('min # turns per dialogue = {}'.format(min([len(subset.loc[subset.Conversation==i]) for i in conversation_IDs])))      
-print('avg # turns per dialogue = {}'.format(np.mean([len(subset.loc[subset.Conversation==i]) for i in conversation_IDs])))
       
 
 #-- functions --#
@@ -207,7 +147,26 @@ def allnull(somelist):
 
 def evaluate_recall_thr(y, y_test, k=10, thr=0.7):
     # modifying this to allow fine-tuning the threshold and counting empty answers
-    num_examples = float(len(y))
+    num_examples = 0
+    num_correct_ans = 0
+    num_correct_nonans = 0
+    for scores, labels in zip(y, y_test):
+        predictions = np.argsort(scores, axis=0)[::-1] #added when scores are numbers and not predicted labels
+        sorted_scores = np.sort(scores, axis=0)[::-1] #added when scores are numbers and not predicted labels
+        above_thr_selections = [item for item, value in zip(predictions[:k], sorted_scores[:k]) if value>thr]
+        A, B = set(labels), set(above_thr_selections)
+        num_examples += len(A) #num of examples is num of (q, annotated a) pairs. + 1 if no annotated ans exists.
+        intersection = A & B
+        if len(intersection)>0:
+            num_correct_ans += len(list(intersection))
+        elif len(intersection)==0 and len(A)==0 and len(B)==0:
+            num_correct_nonans += 1
+            num_examples += 1
+    return (num_correct_ans+num_correct_nonans)/num_examples, num_correct_ans, num_correct_nonans
+
+def evaluate_recall_thr_star(y, y_test, k=10, thr=0.7):
+    # modifying this to allow fine-tuning the threshold and counting empty answers
+    num_examples = len(y)
     num_correct_ans = 0
     num_correct_nonans = 0
     for scores, labels in zip(y, y_test):
@@ -218,7 +177,8 @@ def evaluate_recall_thr(y, y_test, k=10, thr=0.7):
         A, B = set(labels), set(above_thr_selections)
         intersection = A & B
         if len(intersection)>0:
-            num_correct_ans += len(list(intersection))
+            num_correct_ans += 1 #if there is an intersection, count 1. I.e., at least 1 relevant answer in the top k
+
         elif len(intersection)==0 and len(A)==0 and len(B)==0:
             num_correct_nonans += 1
     return (num_correct_ans+num_correct_nonans)/num_examples, num_correct_ans, num_correct_nonans
@@ -349,7 +309,10 @@ for i in range(3):
 
 saveJsonDialogues(filepath='data/devGoldDialogues.json', ga=True)
 saveJsonDialogues('data/devTfIdfDialogues.json')
-
+for i in range(3):
+    for n in [1, 2, 5, 10, 20]:
+        print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
+        
 ###### BM25 ######
 # Train BM25 predictor q-q relevance
 from rank_bm25 import BM25Okapi
@@ -367,7 +330,10 @@ for i in range(3):
         print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
 
 saveJsonDialogues('data/devBm25Dialogues.json')
-  
+
+for i in range(3):
+    for n in [1, 2, 5, 10, 20]:
+        print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y, valid_df.WOzAnswers.values, n, thr=0)[i]))  
 
 
 ########## USING BERT ##########
@@ -406,27 +372,16 @@ for i in range(3):
 #MEDIAN pooling better than mean and close to TFIDF on test set --need more error analysis because HP: BERT does better selection than tfidf even if wrong question (second best predition by bert better than second best by tfidf). Mode pretty shit. Max better than mode, worse than mean. mean-max not great too. Bert cased doesn't make it better. speach in practice will be converted to lowercase text anyway. Large BERT doesn't bring improvements
 
 saveJsonDialogues('data/devBERTbaseuncasedDialogues.json')
-
-    
-# ANSWER SIMILARITY
-train_embeddings = []
-for text in train_df.Utterance.values:
-    train_embeddings.append(bertembed(text)[0])
-train_embeddings = np.array(train_embeddings)
- 
-y = [LMPredictor_new(valid_embeddings[x], train_embeddings) for x in range(len(valid_embeddings))]
 for i in range(3):
     for n in [1, 2, 5, 10, 20]:
-        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
-
-
+        print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
 
 
 # qarelevance
-preds = pd.read_csv('/Users/amc/Documents/glue_data/Margarita_1_All_ratio/valid_results_mrpc.txt', sep='\t', encoding='utf-8')['prediction'].values
+preds = pd.read_csv('/Users/amc/Documents/glue_data/Margarita_1_100_ratio/valid_results_mrpc_proba.txt', sep='\t', encoding='utf-8')['prediction'].values
 ###DO run toia_data_processor.py until row 166
 valid_preds = pd.DataFrame({'q': valid_df['#1 String'].values, 'A': valid_df['#2 String'].values, 'y_pred': preds})
-###DO re-run this script until row 335
+###DO re-run this script until row 297
 y = []
 for i in range(len(valid_df)):
     ranks=[]
@@ -443,24 +398,29 @@ for i in range(3):
         print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
 
 saveJsonDialogues('data/devBERTqaRel1to100Dialogues.json')
-
-
+y=y_qa1to100
 for i in range(3):
     for n in [1, 2, 5, 10, 20]:
-        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
+        print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
 
 outputPred(y, valid_df.WOzAnswers.values, train_df.Utterance.values, '/Users/amc/Documents/TOIA-NYUAD/research/data/devBERTqaRel1to100Results.csv', 20, valid_df.Context.values)
 #note that if instead of train_df.Utterance.values we use train_corpus or train_df.Context.values (which is the same thing), we get the questions instead of the answers
         
 #RANDOM
 import random as rd
+rd.seed(2020)
 tmp = list(range(1,1+len(train_corpus)))
 y_random = [rd.sample(tmp, len(tmp)) for x in range(len(valid_df))] 
 for i in range(3):
     for n in [1, 2, 5, 10, 20]:
         print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y_random, valid_df.WOzAnswers.values, n, thr=0)[i]))
+for i in range(3):
+    for n in [1, 2, 5, 10, 20]:
+        print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y_random, valid_df.WOzAnswers.values, n, thr=0)[i]))
 
- 
+
+
+
 ####### Using DNN initialized on ni sentence encoders model + BM25 ######
 def print_metrics(y):                         
     query_precisions, query_recalls, query_precision_at20s, query_recall_at20s, query_precision_at10s, query_recall_at10s,  query_precision_at5s, query_recall_at5s,  query_precision_at2s, query_recall_at2s,  query_precision_at1s, query_recall_at1s, ave_precisions, rec_ranks, check = [], [], [], [], [], [], [], [], [], [], [], [], [], [], []
@@ -531,226 +491,4 @@ def print_metrics(y):
     # print("Mean recall @2: ", np.mean(query_recall_at2s))
     print("Mean recall @1: ", np.mean(query_recall_at1s))
 
-model = tf.keras.models.load_model('/Users/amc/Documents/TOIA-NYUAD/research/saved_dl_unisentencqa_sensqa_model1/model')  
-model.summary()    
-module = hub.load('./3')
 
-KBanswers = list(np.unique(train_df.Utterance.values))
-input_text = 'Is this robot artificial intelligence connected to the work, right?'
-def predict_rankings(input_text):
-    predictions = []
-    for A in KBanswers:
-        sentence = input_text + " " + A
-        predictions.append(sentence)
-    embeddings = module.signatures['question_encoder'](tf.constant(predictions))
-    embeddings=np.array(embeddings['outputs'])
-    return model.predict(embeddings)
-
-rankings = predict_rankings(input_text)
-
-### This is ONLY DNN ### (BTW this y takes a long to compute... need to optmize code/method here!)
-y = [predict_rankings(query) for query in list(valid_df.Q.values)] 
-yhat = [[i[0] for i in y[j].tolist()] for j in range(len(y))]
-print_metrics(yhat)
-
-# Then, let's see if we can improve by combining DNN and BM25
-# k=50
-
-def print_metrics(y, yhat):                         
-    query_precisions, query_recalls, query_precision_at20s, query_recall_at20s, query_precision_at10s, query_recall_at10s,  query_precision_at5s, query_recall_at5s,  query_precision_at2s, query_recall_at2s,  query_precision_at1s, query_recall_at1s, ave_precisions, rec_ranks, check = [], [], [], [], [], [], [], [], [], [], [], [], [], [], []
-    for query, retrieval_scores, answer_scores in zip(list(valid_df.Q.values), y, yhat):
-        # documents=corpus
-        if np.sum(retrieval_scores)==0:
-            sorted_retrieved_documents = []
-            relevant_documents = []
-            query_precisions.append(0)
-            query_recalls.append(0)
-            query_precision_at20s.append(0)
-            query_precision_at10s.append(0)
-            query_precision_at5s.append(0)
-            query_precision_at2s.append(0)
-            query_precision_at1s.append(0)
-            query_recall_at20s.append(0)
-            query_recall_at10s.append(0)
-            query_recall_at5s.append(0)
-            query_recall_at2s.append(0)
-            query_recall_at1s.append(0)
-            ave_precisions.append(0)
-            rec_ranks.append(0)
-        else:
-            for i in range(len(train_corpus)):
-                ans = train_df[train_df['Context']==(train_corpus[i])].Utterance.values
-                ids =  [j for j,x in enumerate(KBanswers) if x in ans]
-                scores = [answer_scores[m] for m in ids]
-                score = np.mean(scores)
-                retrieval_scores[i] = retrieval_scores[i] + score  
-            sorted_retrieval_scores = np.sort(retrieval_scores, axis=0)[::-1]
-            sorted_id_documents = np.argsort(retrieval_scores, axis=0)[::-1]
-            sorted_id_retreved_documents = sorted_id_documents[sorted_retrieval_scores>0]
-            sorted_retrieved_documents = train_corpus[sorted_id_retreved_documents]
-            relevant_answers = list(valid_df[['BA1', 'BA2', 'BA3', 'BA4', 'BA5', 'BA6']].loc[valid_df.Q.values==query].values[0])
-            relevant_documents = list(train_df[train_df['Utterance'].isin(relevant_answers)].Context)    
-            query_precisions.append(len(set(relevant_documents) & set(sorted_retrieved_documents)) / len(set(sorted_retrieved_documents)))
-            query_recalls.append(len(set(relevant_documents) & set(sorted_retrieved_documents)) / len(set(relevant_documents)))    
-            query_precision_at20s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:20])) / len(set(sorted_retrieved_documents[:20])))
-            query_precision_at10s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:10])) / len(set(sorted_retrieved_documents[:10])))
-            query_precision_at5s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:5])) / len(set(sorted_retrieved_documents[:5])))
-            query_precision_at2s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:2])) / len(set(sorted_retrieved_documents[:2])))
-            query_precision_at1s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:1])) / len(set(sorted_retrieved_documents[:1])))
-            # query_recall_at20s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:20])) / min(len(set(relevant_documents)), 20))
-            # query_recall_at10s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:10])) / min(len(set(relevant_documents)), 10))
-            # query_recall_at5s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:5])) / min(len(set(relevant_documents)), 5))
-            # query_recall_at2s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:2])) / min(len(set(relevant_documents)), 2))
-            query_recall_at1s.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:1])) / min(len(set(relevant_documents)), 1))
-            p_at_ks, rel_at_ks = [], []
-            for k in range(1, 1+len(set(sorted_retrieved_documents))):
-                p_at_ks.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:k])) / len(set(sorted_retrieved_documents[:k])))
-                rel_at_ks.append(1 if sorted_retrieved_documents[k-1] in relevant_documents else 0)
-            ave_precisions.append(sum([p*r for p, r in zip(p_at_ks, rel_at_ks)])/len(set(relevant_documents)))
-            if query_recalls[-1]>0:
-                for r, doc in enumerate(sorted_retrieved_documents):
-                    if doc in relevant_documents:
-                        rec_ranks.append(1/(1+r))
-                        break
-                else:
-                    rec_ranks.append(0)
-        check.append([query, sorted_retrieved_documents[:3], relevant_documents])
-            
-    print("Mean Average Precision (MAP): ", np.mean(ave_precisions))
-    print("Mean Reciprocal Rank (MRR): ", np.mean(rec_ranks))
-    print("Mean precision: ", np.mean(query_precisions))
-    print("Mean recall: ", np.mean(query_recalls))
-    print("Mean precision @20: ", np.mean(query_precision_at20s))
-    print("Mean precision @10: ", np.mean(query_precision_at10s))
-    print("Mean precision @5: ", np.mean(query_precision_at5s))
-    print("Mean precision @2: ", np.mean(query_precision_at2s))
-    print("Mean precision @1: ", np.mean(query_precision_at1s))
-    # print("Mean recall @20: ", np.mean(query_recall_at20s))
-    # print("Mean recall @10: ", np.mean(query_recall_at10s))
-    # print("Mean recall @5: ", np.mean(query_recall_at5s))
-    # print("Mean recall @2: ", np.mean(query_recall_at2s))
-    print("Mean recall @1: ", np.mean(query_recall_at1s))
-
-print_metrics(y, yhat)
-
-k=50 #( or rank > 0.5 or thr: select only classified as 1)
-pred_answers = np.take(KBanswers, list(np.argsort(rankings, axis=0)[::-1][:k]))
-pred_answers = [answer[0] for answer in pred_answers]
-step1_corpus = list(knowledgebase.loc[knowledgebase.Utterance.isin(pred_answers), 'Context'])
-tokenized_corpus = [doc.split(" ") for doc in step1_corpus]
-
-k=5
-bm25 = BM25Okapi(tokenized_corpus)
-step2_rankings = bm25.get_scores(input_text.split(" "))
-step2_ranked_questions = np.take(step1_corpus, list(np.argsort(step2_rankings, axis=0)[::-1][:k]))
-step2_answers = [knowledgebase.loc[knowledgebase.Context == a, "Utterance"] for a in step2_ranked_questions]
-
-print("Reranked answers: ", step2_answers[0])
-        
-        
-
-#centroids
-KBcentroid = train_embeddings.mean(0)
-dist_to_KBcentr = [cosine(valid_embeddings[x], KBcentroid) for x in range(len(valid_embeddings))]
-# EUCLIDEAN DISTANCE np.linalg.norm(u-v)
-#dist_to_KBcentr = [np.linalg.norm(valid_embeddings[x]-KBcentroid) for x in range(len(valid_embeddings))]
-valid_df['dist_to_KBcentr'] = dist_to_KBcentr 
-ans_label = ['HAVE ans' if len(valid_df.WOzAnswers.values[x])>0 else 'NO ans' for x in range(len(valid_embeddings))]
-valid_df['ans_label'] = ans_label
-
-# Draw Plot
-plt.figure(figsize=(8,5), dpi= 70)
-sns.kdeplot(valid_df.loc[valid_df['ans_label'] == 'HAVE ans', 'dist_to_KBcentr'], shade=True, color="g", label="Have Ans", alpha=.7)
-sns.kdeplot(valid_df.loc[valid_df['ans_label'] == 'NO ans', 'dist_to_KBcentr'], shade=True, color="deeppink", label="No ans", alpha=.7)
-
-# Decoration
-plt.title('Density Plot of Cosine Distance to KB Centroid \n (BERT)', fontsize=22)
-plt.legend()
-plt.show()
-  
-
-#####TEST
-##centroids
-#KBcentroid = train_embeddings.mean(0)
-#dist_to_KBcentr = [cosine(test_embeddings[x], KBcentroid) for x in range(len(test_embeddings))]
-#test_df['dist_to_KBcentr'] = dist_to_KBcentr 
-#ans_label = ['HAVE ans' if len(test_df.WOzAnswers.values[x])>0 else 'NO ans' for x in range(len(test_embeddings))]
-#test_df['ans_label'] = ans_label
-#
-## Draw Plot
-#plt.figure(figsize=(16,10), dpi= 80)
-#sns.kdeplot(test_df.loc[test_df['ans_label'] == 'HAVE ans', 'dist_to_KBcentr'], shade=True, color="g", label="Have Ans", alpha=.7)
-#sns.kdeplot(test_df.loc[test_df['ans_label'] == 'NO ans', 'dist_to_KBcentr'], shade=True, color="deeppink", label="No ans", alpha=.7)
-#
-## Decoration
-#plt.title('Density Plot of Cosine Distance to KB Centroid by have/not have ans.', fontsize=22)
-#plt.legend()
-#plt.show()
-
-
-
-
-###### using dialogue turns ##################
-    
-    
-train_df, test_df = train_test_sets_questions_seqdata_no_ooc(multiturndialogues, TURNS=0)
-print('TRAIN # utterances = {}'.format(len(train_df.Context.values)))
-print('TEST # utterances = {}'.format(len(test_df.Context.values)))
-print(
-      sum([len(ls)==0 for ls in test_df.WOzAnswers.values])/len(test_df.WOzAnswers.values),
-      sum([len(ls)==0 for ls in test_df.WOzAnswers.values]),
-      sum([len(ls)!=0 for ls in test_df.WOzAnswers.values]) 
-      )
-
-
-train_df, test_df = train_test_sets_questions_seqdata_no_ooc(multiturndialogues, TURNS=1)
-print('TRAIN # utterances = {}'.format(len(train_df.Context.values)))
-print('TEST # utterances = {}'.format(len(test_df.Context.values)))
-print(
-      sum([len(ls)==0 for ls in test_df.WOzAnswers.values])/len(test_df.WOzAnswers.values),
-      sum([len(ls)==0 for ls in test_df.WOzAnswers.values]),
-      sum([len(ls)!=0 for ls in test_df.WOzAnswers.values]) 
-      )
-
-
-  ### Seems there are bugs to fix here ###  
-valid_df = multiturndialogues.loc[multiturndialogues.Experiment.isin(["TRAIN"])]
-valid_df.reset_index(level=None, drop=True, inplace=True)
-valid_df = test_set_questions_ooctrain(valid_df, train_df)
-
-test_df = multiturndialogues.loc[multiturndialogues.Experiment.isin(["TEST"])]
-test_df.reset_index(level=None, drop=True, inplace=True)        
-test_df = test_set_questions_ooctrain(test_df, train_df)
-
-print('# utterances = {}'.format(len(valid_df.Context.values)))
-print(
-      sum([len(ls)==0 for ls in valid_df.WOzAnswers.values])/len(valid_df.WOzAnswers.values),
-      sum([len(ls)==0 for ls in valid_df.WOzAnswers.values]),
-      sum([len(ls)!=0 for ls in valid_df.WOzAnswers.values]) 
-      )
-
-print('# utterances = {}'.format(len(test_df.Context.values)))
-print(
-      sum([len(ls)==0 for ls in test_df.WOzAnswers.values])/len(test_df.WOzAnswers.values),
-      sum([len(ls)==0 for ls in test_df.WOzAnswers.values]),
-      sum([len(ls)!=0 for ls in test_df.WOzAnswers.values])
-      )
-
-
-train_df, test_df = train_test_sets_questions_seqdata_no_ooc(multiturndialogues, TURNS=0)
-print('TRAIN # utterances = {}'.format(len(train_df.Context.values)))
-print('TEST # utterances = {}'.format(len(test_df.Context.values)))
-print(
-      sum([len(ls)==0 for ls in test_df.WOzAnswers.values])/len(test_df.WOzAnswers.values),
-      sum([len(ls)==0 for ls in test_df.WOzAnswers.values]),
-      sum([len(ls)!=0 for ls in test_df.WOzAnswers.values]) 
-      )
-
-
-train_df, test_df = train_test_sets_questions_seqdata_no_ooc(multiturndialogues, TURNS=1)
-print('TRAIN # utterances = {}'.format(len(train_df.Context.values)))
-print('TEST # utterances = {}'.format(len(test_df.Context.values)))
-print(
-      sum([len(ls)==0 for ls in test_df.WOzAnswers.values])/len(test_df.WOzAnswers.values),
-      sum([len(ls)==0 for ls in test_df.WOzAnswers.values]),
-      sum([len(ls)!=0 for ls in test_df.WOzAnswers.values]) 
