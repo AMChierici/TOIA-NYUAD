@@ -132,11 +132,16 @@ for i in names:
     	print('Samples are correlated (reject H0) p=%.3f' % p)
     
     
-#dfResults.to_csv('data/dfResults.txt', sep='\t', encoding='utf-8', index=False)
+dfResults.to_csv('data/dfResultsAll.txt', sep='\t', encoding='utf-8', index=False)
     
 
 ### FOR WHICH QUESTIONS THERE IS LESS AGREEABLENESS? CoV by Q, check what they are, then calc. corr for cov high and small ###  
 
+#From here onward, exclude blacklist workers and gold answers. ### DOUBLE CHECK blacklsit WAS CORRECT EARLIER. IT SEEMS NOT ###
+
+dfResults = dfResults[~dfResults['worker_ids'].isin(blackList)]
+dfResults = dfResults[dfResults['isGold']==0]
+          
 def CoV(x):
     # x is a list or numpy array
     return np.std(x)/np.mean(x)
@@ -180,7 +185,7 @@ print(
 
 #these are groups of answers that generate more disagreement (A) and less disagreements (B).
 
-dfResults.to_csv('data/dfResults.txt', sep='\t', encoding='utf-8', index=False)
+dfResults.to_csv('data/dfResults_qualified_nogold.txt', sep='\t', encoding='utf-8', index=False)
 
 ###use crowd ratings as annotations and and calc Recall@x
 #build dataset like multiturn dialogues with BA1 - 3 (Assuming 3 is still acceptable)
@@ -194,36 +199,36 @@ for q in set(dfResults['last_turn']):
     sortescores = np.sort(scores, axis=0)[::-1]
     mask = selindices[sortescores >= 3.5]
     lsCheck.append(len(mask))
-print(max(lsCheck))
+nBA = max(lsCheck)
     
-dicDf = {
-    'Q' : [],
-    'BA1' : [],
-    'BA2' : [],
-    'BA3' : [],
-    'BA4' : [],
-    'BA5' : [],
-    'BA6' : [],
-    'BA7' : [],
-    'BA8' : [],
-    'BA9' : [],
-    'BA10' : [],
-    'BA11' : [],
-    'BA12' : [],
-    'BA13' : [],
-    'BA14' : [],
-    'BA15' : []
-    }
+dicDf = {}
+dicDf['Q'] = []
+for i in range(1, 1+nBA):
+    dicDf['BA{}'.format(i)] = []
 
 for q in set(dfResults['last_turn']):
     #q = 'Oh I see. I see. Yeah. Yeah. So how did you adapt to the Arabic culture?'
     dicDf['Q'].append(q)
     answers = list(dfResults[dfResults['last_turn'] == q]['predicted_answer'])
+    #1st option
     scores = list(dfResults[dfResults['last_turn'] == q]['avg_answer'])
     selindices = np.argsort(scores, axis=0)[::-1]
     sortescores = np.sort(scores, axis=0)[::-1]
     mask = selindices[sortescores >= 3.5]
-    for i in range(15):
+    #2nd option
+    #scores = list(dfResults[dfResults['last_turn'] == q]['answers'])
+    #mask = [idx for idx, votes in enumerate(scores) if any(votes)>3]
+    #3rd option
+    #scores = [max(votes) for votes in list(dfResults[dfResults['last_turn'] == q]['answers'])]
+    #selindices = np.argsort(scores, axis=0)[::-1]
+    #sortescores = np.sort(scores, axis=0)[::-1]
+    #mask = selindices[sortescores > 3]
+    #4th option
+    #scores = [random.choice(votes) for votes in list(dfResults[dfResults['last_turn'] == q]['answers'])]
+    #selindices = np.argsort(scores, axis=0)[::-1]
+    #sortescores = np.sort(scores, axis=0)[::-1]
+    #mask = selindices[sortescores > 3]
+    for i in range(nBA):
         try:
             dicDf['BA{}'.format(1 + i)].append(answers[mask[i]])
         except IndexError:
@@ -264,12 +269,11 @@ def updateTrain(df):
     return df.loc[:, ['Context', 'Utterance']]
 
 #run LREC_code_postreview until row 277
-train_df = updateTrain(dfResults)
+#train_df = updateTrain(dfResults)
 valid_df = transformDialogues(dfCrowdAnnotations, train_df)
 ### using tf-idf we can see that recalls @1,2,5 are actually worse than margarita's annotations, and recalls @10 and @20 are the same. Looks like the technique is robust by change of datasets, by low k recalls are weaker because annotations too generous? Is it worth do the same job for the BERT qa relevance (lots of work)
 
 
-###use annotations as model and calc Recall@x
 
 # other things to check:
     ###cov for avg answer = good answers, bad, and so-so
