@@ -47,23 +47,6 @@ from pytorch_pretrained_bert import BertTokenizer, BertModel, BertForMaskedLM
 from sklearn.metrics.pairwise import cosine_similarity
 import sys
 
-large = 22; med = 16; small = 12
-params = {'axes.titlesize': large,
-          'legend.fontsize': med,
-          'figure.figsize': (16, 10),
-          'axes.labelsize': med,
-          'axes.titlesize': med,
-          'xtick.labelsize': med,
-          'ytick.labelsize': med,
-          'figure.titlesize': large}
-plt.rcParams.update(params)
-plt.style.use('seaborn-whitegrid')
-sns.set_style("white")
-%matplotlib inline
-
-# Version
-print(mpl.__version__)  #> 3.0.0
-print(sns.__version__)  #> 0.9.0
 
 zeroturndialogue = pd.read_csv('/Users/amc/Documents/TOIA-NYUAD/research/knowledgebase.csv', encoding='utf-8')
 zeroturndialogue = zeroturndialogue.fillna('')
@@ -184,14 +167,14 @@ def evaluate_recall_thr_star(y, y_test, k=10, thr=0.7):
     return (num_correct_ans+num_correct_nonans)/num_examples, num_correct_ans, num_correct_nonans
 
 def print_retrieval_metrics(y, valid_df, KBanswers):                         
-    query_precisions, query_recalls, ave_precisions, rec_ranks, check = [], [], [], [], []
-    for query, retrieval_scores in zip(list(valid_df.Q.values), y):
-        # documents=corpus
+    query_precisions, query_recalls, ave_precisions, rec_ranks = [], [], [], []
+    for query, retrieval_scores in zip(list(valid_df_orig.Q.values), y):
         sorted_retrieval_scores = np.sort(retrieval_scores, axis=0)[::-1]
-        if sorted_retrieval_scores[0]==0:
+        columns_annotations = valid_df_orig.columns[valid_df_orig.columns.get_loc('BA1'):]
+        relevant_documents = [doc for doc in list(valid_df_orig[columns_annotations].loc[valid_df_orig.Q.values==query].values[0]) if doc==doc]
+        if sorted_retrieval_scores[0]==0 or len(relevant_documents)==0:
             sorted_retrieved_documents = []
             relevant_documents = []
-            query_precisions.append(0)
             query_recalls.append(0)
             ave_precisions.append(0)
             rec_ranks.append(0)
@@ -199,29 +182,23 @@ def print_retrieval_metrics(y, valid_df, KBanswers):
             sorted_id_documents = np.argsort(retrieval_scores, axis=0)[::-1]
             sorted_id_retreved_documents = sorted_id_documents[sorted_retrieval_scores > 0]
             sorted_retrieved_documents = [KBanswers[i] for i in sorted_id_retreved_documents]
-            columns_annotations = valid_df.columns[valid_df.columns.get_loc('BA1'):]
-            relevant_documents = list(valid_df[columns_annotations].loc[valid_df.Q.values==query].values[0])
-            # relevant_documents = list(train_df[train_df['Utterance'].isin(relevant_answers)].Context)    
-            query_precisions.append(len(set(relevant_documents) & set(sorted_retrieved_documents)) / len(set(sorted_retrieved_documents)))
+            columns_annotations = valid_df_orig.columns[valid_df_orig.columns.get_loc('BA1'):]
+            relevant_documents = [doc for doc in list(valid_df_orig[columns_annotations].loc[valid_df_orig.Q.values==query].values[0]) if doc==doc]
             query_recalls.append(len(set(relevant_documents) & set(sorted_retrieved_documents)) / len(set(relevant_documents)))    
             p_at_ks, rel_at_ks = [], []
             for k in range(1, 1+len(set(sorted_retrieved_documents))):
-                p_at_ks.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:k])) / len(set(sorted_retrieved_documents[:k])))
+                p_at_ks.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:k])) / k)
                 rel_at_ks.append(1 if sorted_retrieved_documents[k-1] in relevant_documents else 0)
             ave_precisions.append(sum([p*r for p, r in zip(p_at_ks, rel_at_ks)])/len(set(relevant_documents)))
-            if query_recalls[-1]>0:
-                for r, doc in enumerate(sorted_retrieved_documents):
-                    if doc in relevant_documents:
-                        rec_ranks.append(1/(1+r))
-                        break
-                else:
-                    rec_ranks.append(0)
-        check.append([query, sorted_retrieved_documents[:3], relevant_documents])
-            
-    print("Mean Average Precision (MAP): ", np.mean(ave_precisions))
+        if query_recalls[-1]>0:
+            for r, doc in enumerate(sorted_retrieved_documents):
+                if doc in relevant_documents:
+                    rec_ranks.append(1/(1+r))
+                    break
+            else:
+                rec_ranks.append(0)
     print("Mean Reciprocal Rank (MRR): ", np.mean(rec_ranks))
-    print("Mean precision: ", np.mean(query_precisions))
-    print("Mean recall: ", np.mean(query_recalls))
+    print("Mean Average Precision (MAP): ", np.mean(ave_precisions))
 
 
 class TFIDFPredictor:
@@ -331,9 +308,9 @@ def outputPred(y, y_test, lsTraincorpus, txtFilepath, intK, lsQuestions):
 
 
 
-valid_df = multiturndialogues.loc[multiturndialogues.Experiment.isin(["TRAIN"])]# & multiturndialogues.Mode.isin(["PER"])]
-valid_df.reset_index(level=None, drop=True, inplace=True)
-valid_df = test_set_questions_ooctrain(valid_df, train_df)
+valid_df_orig = multiturndialogues.loc[multiturndialogues.Experiment.isin(["TRAIN"])]# & multiturndialogues.Mode.isin(["PER"])]
+valid_df_orig.reset_index(level=None, drop=True, inplace=True)
+valid_df = test_set_questions_ooctrain(valid_df_orig, train_df)
 
 # Train TFIDF predictor
 pred = TFIDFPredictor()
@@ -352,6 +329,9 @@ saveJsonDialogues('data/devTfIdfDialogues.json')
 for i in range(3):
     for n in [1, 2, 5, 10, 20]:
         print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
+  
+#valid_df_orig = dfCrowdAnnotations
+print_retrieval_metrics(y, valid_df_orig, list(train_df.Utterance.values))
         
 ###### BM25 ######
 # Train BM25 predictor q-q relevance
@@ -374,17 +354,12 @@ saveJsonDialogues('data/devBm25Dialogues.json')
 for i in range(3):
     for n in [1, 2, 5, 10, 20]:
         print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y, valid_df.WOzAnswers.values, n, thr=0)[i]))  
+        
+#valid_df_orig = dfCrowdAnnotations
+print_retrieval_metrics(y, valid_df_orig, list(train_df.Utterance.values))
 
 
 ########## USING BERT ##########
-model_path = '/Users/amc/Documents/fine_tuned_models/bert_text_classification/Margarita_1to100/'
-# Load pre-trained model tokenizer (vocabulary)
-tokenizer = BertTokenizer.from_pretrained(model_path)
-# Load pre-trained model (weights)
-model = BertModel.from_pretrained(model_path)
-# Put the model in "evaluation" mode, meaning feed-forward operation.
-model.eval()
-
 # Load pre-trained model tokenizer (vocabulary)
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 # Load pre-trained model (weights)
@@ -416,22 +391,26 @@ for i in range(3):
     for n in [1, 2, 5, 10, 20]:
         print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
 
+#valid_df_orig = dfCrowdAnnotations
+print_retrieval_metrics(y, valid_df_orig, list(train_df.Utterance.values))
+
+
 
 # qarelevance
-preds = pd.read_csv('/Users/amc/Documents/glue_data/Margarita_1_All_ratio/valid_results_mrpc.txt', sep='\t', encoding='utf-8')['prediction'].values
+preds = pd.read_csv('/Users/amc/Documents/glue_data/Margarita_1_100_ratio/valid_results_mrpc_proba.txt', sep='\t', encoding='utf-8')['prediction'].values
 ###DO run toia_data_processor.py until row 166
 valid_preds = pd.DataFrame({'q': valid_df['#1 String'].values, 'A': valid_df['#2 String'].values, 'y_pred': preds})
-###DO re-run this script until row 335 or analyzeResults.py row 268 for view from the crowd
+###DO re-run this script until row 312 or analyzeResults.py row 268 for view from the crowd //rewrite this. I need to put back the old train_df and the old valid_df. Need to simply to save them under a different name before running toia_data_prcessor.py and then put back 
 y = []
-for i in range(len(valid_df)):
+for i in range(len(valid_df_orig)):
     ranks=[]
     for j in train_corpus:
         answers = train_df[train_df['Context']==j]['Utterance'].values[0]
-        rank = valid_preds[(valid_preds['A']==answers) & (valid_preds['q']==valid_df.loc[i, 'Q'])]['y_pred'].values[0]      #change 'Q' to 'Context' when running for Crowd annotations
+        rank = valid_preds[(valid_preds['A']==answers) & (valid_preds['q']==valid_df_orig.loc[i, 'Q'])]['y_pred'].values[0]      #change 'Q' to 'Context' when running for Crowd annotations
         ranks.append(rank)
     y.append(ranks)
     
-valid_df = test_set_questions_ooctrain(valid_df, train_df)
+valid_df = test_set_questions_ooctrain(valid_df_orig, train_df)
 
 for i in range(3):
     for n in [1, 2, 5, 10, 20]:
@@ -445,6 +424,11 @@ for i in range(3):
 
 outputPred(y, valid_df.WOzAnswers.values, train_df.Utterance.values, '/Users/amc/Documents/TOIA-NYUAD/research/data/devBERTqaRel1to100Results.csv', 20, valid_df.Context.values)
 #note that if instead of train_df.Utterance.values we use train_corpus or train_df.Context.values (which is the same thing), we get the questions instead of the answers
+
+valid_df_orig = dfCrowdAnnotations
+print_retrieval_metrics(y, valid_df_orig, list(train_df.Utterance.values))
+
+
         
 #RANDOM
 import random as rd
@@ -458,8 +442,97 @@ for i in range(3):
     for n in [1, 2, 5, 10, 20]:
         print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y_random, valid_df.WOzAnswers.values, n, thr=0)[i]))
 
+#valid_df_orig = dfCrowdAnnotations
+print_retrieval_metrics(y_random, valid_df_orig, list(train_df.Utterance.values))
 
-#### for crowd datasets #####    
-print_retrieval_metrics(y, dfCrowdAnnotations, train_df.Utterance.values)
 
 
+###use annotations as model and calc Recall@x
+# valid_df, dfResults from analyzeResults.py
+# train_df from this script
+
+# this is human performance
+valid_df_orig = dfCrowdAnnotations
+lsTrainAnswers = list(train_df.Utterance.values)
+y_crowd = []
+for q in list(valid_df.Context.values):
+    answers = list(dfResults[dfResults['last_turn'] == q]['predicted_answer'])
+    train_idxs = [lsTrainAnswers.index(ans) for ans in answers]
+    #1st option
+    scores = list(dfResults[dfResults['last_turn'] == q]['avg_answer'])
+    lsTmp = [0]*len(lsTrainAnswers)
+    for i, v in enumerate(train_idxs):
+        lsTmp[v] = scores[i]
+    y_crowd.append(lsTmp)
+ 
+for i in range(3):
+    for n in [1, 2, 5, 10, 20]:
+        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y_crowd, valid_df.WOzAnswers.values, n, thr=0)[i]))
+for i in range(3):
+    for n in [1, 2, 5, 10, 20]:
+        print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y_crowd, valid_df.WOzAnswers.values, n, thr=0)[i]))
+
+print_retrieval_metrics(y_crowd, valid_df_orig, list(train_df.Utterance.values))
+
+# go back to valid_df with Margarita's annotations.    
+# run code here up to valid_df and valid_df_orig definition and subset on questions we have
+valid_df_orig = valid_df_orig[valid_df_orig['Q'].isin(dfCrowdAnnotations.Q.values)]
+valid_df = valid_df[valid_df['Context'].isin(dfCrowdAnnotations.Q.values)]
+y_crowd = []
+for q in list(valid_df.Context.values):
+    answers = list(dfResults[dfResults['last_turn'] == q]['predicted_answer'])
+    train_idxs = [lsTrainAnswers.index(ans) for ans in answers]
+    #1st option
+    scores = list(dfResults[dfResults['last_turn'] == q]['avg_answer'])
+    lsTmp = [0]*len(lsTrainAnswers)
+    for i, v in enumerate(train_idxs):
+        lsTmp[v] = scores[i]
+    y_crowd.append(lsTmp)
+ 
+for i in range(3):
+    for n in [1, 2, 5, 10, 20]:
+        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y_crowd, valid_df.WOzAnswers.values, n, thr=0)[i]))
+for i in range(3):
+    for n in [1, 2, 5, 10, 20]:
+        print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y_crowd, valid_df.WOzAnswers.values, n, thr=0)[i]))
+
+print_retrieval_metrics(y_crowd, valid_df_orig, list(train_df.Utterance.values))
+
+
+#### for debugging #####    
+
+
+query_recalls, ave_precisions, rec_ranks = [], [], []
+# query = "Hello."
+# retrieval_scores = y[0]
+KBanswers = list(train_df.Utterance.values)
+
+for query, retrieval_scores in zip(list(valid_df_orig.Q.values), y):
+    sorted_retrieval_scores = np.sort(retrieval_scores, axis=0)[::-1]
+    columns_annotations = valid_df_orig.columns[valid_df_orig.columns.get_loc('BA1'):]
+    relevant_documents = [doc for doc in list(valid_df_orig[columns_annotations].loc[valid_df_orig.Q.values==query].values[0]) if doc==doc]
+    if sorted_retrieval_scores[0]==0 or len(relevant_documents)==0:
+        sorted_retrieved_documents = []
+        relevant_documents = []
+        query_recalls.append(0)
+        ave_precisions.append(0)
+        rec_ranks.append(0)
+    else:
+        sorted_id_documents = np.argsort(retrieval_scores, axis=0)[::-1]
+        sorted_id_retreved_documents = sorted_id_documents[sorted_retrieval_scores > 0]
+        sorted_retrieved_documents = [KBanswers[i] for i in sorted_id_retreved_documents]
+        query_recalls.append(len(set(relevant_documents) & set(sorted_retrieved_documents)) / len(set(relevant_documents)))    
+        p_at_ks, rel_at_ks = [], []
+        for k in range(1, 1+len(set(sorted_retrieved_documents))):
+            p_at_ks.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:k])) / k)
+            rel_at_ks.append(1 if sorted_retrieved_documents[k-1] in relevant_documents else 0)
+        ave_precisions.append(sum([p*r for p, r in zip(p_at_ks, rel_at_ks)])/len(set(relevant_documents)))
+    if query_recalls[-1]>0:
+        for r, doc in enumerate(sorted_retrieved_documents):
+            if doc in relevant_documents:
+                rec_ranks.append(1/(1+r)) 
+                break # breaking when first match found --note this uses the First RR, whereas in our case it may be more appropriate to use the TOTAL RR as defined in http://www.lrec-conf.org/proceedings/lrec2002/pdf/301.pdf
+        else:
+            rec_ranks.append(0)
+print("Mean Average Precision (MAP): ", np.mean(ave_precisions))
+print("Mean Reciprocal Rank (MRR): ", np.mean(rec_ranks))
