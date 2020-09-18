@@ -5,7 +5,7 @@ Created on Fri Jun 26 10:37:17 2020
 #thanks to:
     https://machinelearningmastery.com/how-to-calculate-nonparametric-rank-correlation-in-python/
     Kendall vs. Spearman: https://datascience.stackexchange.com/questions/64260/pearson-vs-spearman-vs-kendall Kendall more robust, usually lower than Spearman
-    
+
 @author: amc
 """
 
@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 from scipy.stats import spearmanr, kendalltau
+import csv
 
 
 filePath = "/Users/amc/Documents/TOIA-NYUAD/research/data/"
@@ -40,7 +41,7 @@ df = pd.DataFrame(gold)
 for i in range(len(results)):
     results[i]['isGold'] = 1 if df[df['id']==results[i]['snippet_id']]['model_retrieved_answers'].values[0][0]==results[i]['predicted_answer'] else 0
 
-    
+
 df = pd.DataFrame(model1)
 for i in range(len(results)):
     try:
@@ -48,7 +49,7 @@ for i in range(len(results)):
     except ValueError:
         index = -1
     results[i]['model1Score'] = 0 if index==-1 else df[df['id']==results[i]['snippet_id']]['scores'].values[0][index]
-    
+
 df = pd.DataFrame(model2)
 for i in range(len(results)):
     try:
@@ -56,7 +57,7 @@ for i in range(len(results)):
     except ValueError:
         index = -1
     results[i]['model2Score'] = 0 if index==-1 else df[df['id']==results[i]['snippet_id']]['scores'].values[0][index]
-    
+
 df = pd.DataFrame(model3)
 for i in range(len(results)):
     try:
@@ -64,7 +65,7 @@ for i in range(len(results)):
     except ValueError:
         index = -1
     results[i]['model3Score'] = 0 if index==-1 else df[df['id']==results[i]['snippet_id']]['scores'].values[0][index]
-    
+
 df = pd.DataFrame(model4)
 for i in range(len(results)):
     try:
@@ -72,8 +73,8 @@ for i in range(len(results)):
     except ValueError:
         index = -1
     results[i]['model4Score'] = 0 if index==-1 else df[df['id']==results[i]['snippet_id']]['scores'].values[0][index]
-    
-    
+
+
 df = pd.DataFrame(model5)
 for i in range(len(results)):
     try:
@@ -81,105 +82,144 @@ for i in range(len(results)):
     except ValueError:
         index = -1
     results[i]['model5Score'] = 0 if index==-1 else df[df['id']==results[i]['snippet_id']]['scores'].values[0][index]
-    
-    
+
+workers_blacklist = []
+assignments_blacklist = []
+thr = 3
+for item in results:
+    if item['isGold']==1:
+        answers = item['answers']
+        item['trusted_answers'] = [ans for ans in answers if ans > thr]
+        workers_blacklist.extend([item['worker_ids'][answers.index(ans)]
+                                  for ans in answers if ans <= thr])
+        assignments_blacklist.extend([
+item['assignment_ids'][answers.index(ans)]
+             for ans in answers if ans <= thr])
+
+workers_blacklist = list(np.unique(workers_blacklist))
+assignments_blacklist = list(np.unique(assignments_blacklist))
+# Save assignemtn blacklist for rejecting assignments
+with open(filePath + "assignments_blacklist.csv", "w") as f:
+    writer = csv.writer(f)
+    writer.writerow(assignments_blacklist)
+
+for item in results:
+    if item['isGold']==0:
+        workers = item['worker_ids']
+        answers = item['answers']
+        item['trusted_answers'] = [answers[workers.index(worker)] \
+                                   for worker in workers if worker \
+                                       not in workers_blacklist]
+
+for item in results:
+    m = len(item['trusted_answers'])
+    if m == len(item['answers']):
+        item['all_blacklisted'] = False
+        item['trusted_avg_answer'] = item['avg_answer']
+    elif m != 0:
+        item['all_blacklisted'] = False
+        item['trusted_avg_answer'] = \
+            sum(item['trusted_answers'])/len(item['trusted_answers'])
+    elif m == 0:
+        item['all_blacklisted'] = True
+        item['trusted_avg_answer'] = None
+
 dfResults = pd.DataFrame(results)
-
-
-for i in dfResults.index:
-    dfResults.loc[i, 'worker_ids'] = dfResults.loc[i, 'worker_ids'][0]
-    
-blackList = []
-for workerId in dfResults[(dfResults['isGold']==1) & (dfResults['avg_answer']<=3)]['worker_ids']:
-    blackList.append(workerId)
 
 names=[]
 for i in range(1,6):
     names.append('model{}Score'.format(i))
-    
+
 ### CORRELATIONS ###
 
-print("Excluding unqualified workers")
+print("Excluding unqualified workers (Spearman)")
 for i in names:
-    dfTemp = dfResults[(~dfResults['worker_ids'].isin(blackList)) & (dfResults[i]>0)][['avg_answer', i]]
-    print("\n", i, " Correlation: ", dfTemp['avg_answer'].corr(dfTemp[i], 'spearman'))
-    
-print("\n INCLUDING unqualified workers")
+    dfTemp = dfResults[(~dfResults['all_blacklisted']) & (dfResults[i]>0)][['trusted_avg_answer', i]]
+    print("\n", i, " Correlation: ", dfTemp['trusted_avg_answer'].corr(dfTemp[i], 'spearman'))
+
+print("\n INCLUDING unqualified workers (Spearman)")
 for i in names:
     dfTemp = dfResults[dfResults[i]>0][['avg_answer', i]]
     print("\n", i, " Correlation: ", dfTemp['avg_answer'].corr(dfTemp[i], 'spearman'))
 
-alpha = 0.05  
+alpha = 0.05
 print("Excluding unqualified workers")
 for i in names:
-    dfTemp = dfResults[(~dfResults['worker_ids'].isin(blackList)) & (dfResults[i]>0)][['avg_answer', i]]
-    coef, p = spearmanr(dfTemp['avg_answer'].values, dfTemp[i].values)
+    dfTemp = dfResults[(~dfResults['all_blacklisted']) & (dfResults[i]>0)][['trusted_avg_answer', i]]
+    coef, p = spearmanr(dfTemp['trusted_avg_answer'].values, dfTemp[i].values)
     # interpret the significance
     print("\n", i, " Spearmans Correlation: %.3f" % coef)
     if p > alpha:
     	print('Samples are uncorrelated (fail to reject H0) p=%.3f' % p)
     else:
     	print('Samples are correlated (reject H0) p=%.3f' % p)
-        
+
 for i in names:
-    dfTemp = dfResults[(~dfResults['worker_ids'].isin(blackList)) & (dfResults[i]>0)][['avg_answer', i]]
-    coef, p = kendalltau(dfTemp['avg_answer'].values, dfTemp[i].values)
+    dfTemp = dfResults[(~dfResults['all_blacklisted']) & (dfResults[i]>0)][['trusted_avg_answer', i]]
+    coef, p = kendalltau(dfTemp['trusted_avg_answer'].values, dfTemp[i].values)
     # interpret the significance
     print("\n", i, " Kendall Correlation: %.3f" % coef)
     if p > alpha:
     	print('Samples are uncorrelated (fail to reject H0) p=%.3f' % p)
     else:
     	print('Samples are correlated (reject H0) p=%.3f' % p)
-    
-    
-dfResults.to_csv('data/dfResultsAll.txt', sep='\t', encoding='utf-8', index=False)
-    
 
-### FOR WHICH QUESTIONS THERE IS LESS AGREEABLENESS? CoV by Q, check what they are, then calc. corr for cov high and small ###  
+
+#dfResults.to_csv('data/dfResultsAll.txt', sep='\t', encoding='utf-8', index=False)
+
+
+### FOR WHICH QUESTIONS THERE IS LESS AGREEABLENESS? CoV by Q, check what they are, then calc. corr for cov high and small ###
 
 #From here onward, exclude blacklist workers and gold answers. ### DOUBLE CHECK blacklsit WAS CORRECT EARLIER. IT SEEMS NOT ###
 
-dfResults = dfResults[~dfResults['worker_ids'].isin(blackList)]
-dfResults = dfResults[dfResults['isGold']==0]
-          
+dfResults = dfResults[(~dfResults['all_blacklisted']) & (dfResults['isGold'] == 0)]
+# And replace answers with trusted answers
+dfResults['answers'] = dfResults['trusted_answers']
+dfResults = dfResults.drop(columns=['trusted_answers'])
+
 def CoV(x):
     # x is a list or numpy array
-    return np.std(x)/np.mean(x)
-    
+    if len(x) > 1:
+        res = np.std(x)/np.mean(x)
+    else:
+        res = np.nan
+    return res
+
 dfResults['lsCovs'] = [CoV(x) for x in dfResults['answers']]
-print(dfResults[(~dfResults['worker_ids'].isin(blackList))].describe())
+print(dfResults.describe())
 
-upThr = .514259
-loThr = .204124
+upThr = .50
+loThr = .25
 
-A = np.unique(dfResults[(~dfResults['worker_ids'].isin(blackList)) & (dfResults['lsCovs']>upThr)]['last_turn'])
-B = np.unique(dfResults[(~dfResults['worker_ids'].isin(blackList)) & (dfResults['lsCovs']<=loThr)]['last_turn'])
+A = np.unique(dfResults[dfResults['lsCovs'] > upThr]['last_turn'])
+B = np.unique(dfResults[dfResults['lsCovs'] <= loThr]['last_turn'])
 
 print(
       len(set(set(A) & set(B))), '\n',
       len(set(A)), '\n',
       len(set(B))
       )
-#set(A) - set(set(A) & set(B)) #questions that go well with many answers (check if true)
-#set(B) - set(set(A) & set(B)) #question that go well with only a few answers (check if true)
+# I shall check my metrics only on these subsets!
 print(
+      # questions that go well with many answers (check if true)
       set(A) - set(set(A) & set(B)), '\n==============\n',
+      # questions that go well with only a few answers (check if true)
       set(B) - set(set(A) & set(B))
       )
 #seems this shows where the model do well or not. Because, the answers raters rated are only the top 10 selections from 5 models, so where there is high disagreement, it means the models produced answers that is hard to agree upon. When there is low agreement, models might do all pretty well. --need to see human ratings by level of agreement, e.g., is it easier to agree on high or low ratings? Or, in other words, do all agree/disagree in correct answers, non correct, or both alike? Moreover, shall we introduce a random top 10 model to study the effect of model selections on disagreemnt?
 
-A = dfResults[(~dfResults['worker_ids'].isin(blackList)) & (dfResults['lsCovs']>upThr)]['predicted_answer']
-B = dfResults[(~dfResults['worker_ids'].isin(blackList)) & (dfResults['lsCovs']<=loThr)]['predicted_answer']
+A = dfResults[dfResults['lsCovs'] > upThr]['predicted_answer']
+B = dfResults[dfResults['lsCovs'] <= loThr]['predicted_answer']
 
 print(
       len(set(set(A) & set(B))), '\n',
       len(set(A)), '\n',
       len(set(B))
       )
-#set(A) - set(set(A) & set(B)) #answers that go well with many questions (check if true)
-#set(B) - set(set(A) & set(B)) #answers that go well with only a few questions (check if true)
 print(
+      # answers that go well with many questions (check if true)
       set(A) - set(set(A) & set(B)), '\n==============\n',
+      # answers that go well with only a few questions (check if true)
       set(B) - set(set(A) & set(B))
       )
 
@@ -200,7 +240,7 @@ for q in set(dfResults['last_turn']):
     mask = selindices[sortescores >= 3.5]
     lsCheck.append(len(mask))
 nBA = max(lsCheck)
-    
+
 dicDf = {}
 dicDf['Q'] = []
 for i in range(1, 1+nBA):
@@ -233,9 +273,9 @@ for q in set(dfResults['last_turn']):
             dicDf['BA{}'.format(1 + i)].append(answers[mask[i]])
         except IndexError:
             dicDf['BA{}'.format(1 + i)].append(np.nan)
-            
+
 dfCrowdAnnotations = pd.DataFrame(dicDf)
-        
+
 #borrow test_set_questions_ooctrain function from LREC_code_postreview.py and edit index
 def transformDialogues(dfCrowdAnnotations, train_df):
     # modified to use index of answers in test WOzAnswers --> replaced with WOzAnswersIDs
@@ -250,7 +290,7 @@ def transformDialogues(dfCrowdAnnotations, train_df):
                 tmp_WAs.append(allAs.index(distr))
         Context.append(dfCrowdAnnotations.iloc[example_id, 0])
         WOzAnswersIDs.append(tmp_WAs)
-    return pd.DataFrame({'Context':Context, 'WOzAnswers':WOzAnswersIDs})  
+    return pd.DataFrame({'Context':Context, 'WOzAnswers':WOzAnswersIDs})
 
 # #run LREC_code_postreview until row 300
 # valid_df = transformDialogues(dfCrowdAnnotations, train_df)
@@ -260,13 +300,13 @@ def transformDialogues(dfCrowdAnnotations, train_df):
     ## Edited evaluate_recall_thr to use as no. of examples all the q-a's annotated: Recall@k = (# of recommended items @k that are relevant) / (total # of relevant items). I could also calculate Precision@k = (# of recommended items @k that are relevant) / (# of recommended items @k) but need to define threshold (what is recommended vs. what's not)
 ###Note: cannot really use crowd annotations as dev set annotations because I should change the train set too. I should add more qa pairs in train according to what has been annotated.
 #Let's do it!
- 
-def updateTrain(df):
-    #get questions from old train that are answered by margarita's annotations.
-    df = df.loc[dfResults.avg_answer >= 3.5, ['last_turn', 'predicted_answer']]
-    df.reset_index(level=None, drop=True, inplace=True)
-    df.rename(columns = {'last_turn' : 'Context', 'predicted_answer' : 'Utterance'}, inplace = True) 
-    return df.loc[:, ['Context', 'Utterance']]
+
+# def updateTrain(df):
+#     #get questions from old train that are answered by margarita's annotations.
+#     df = df.loc[dfResults.avg_answer >= 3.5, ['last_turn', 'predicted_answer']]
+#     df.reset_index(level=None, drop=True, inplace=True)
+#     df.rename(columns = {'last_turn' : 'Context', 'predicted_answer' : 'Utterance'}, inplace = True)
+#     return df.loc[:, ['Context', 'Utterance']]
 
 #run LREC_code_postreview until row 277
 #train_df = updateTrain(dfResults)
@@ -279,8 +319,8 @@ valid_df = transformDialogues(dfCrowdAnnotations, train_df)
     ###cov for avg answer = good answers, bad, and so-so
     ###correlation for different quantiles of cov
     ###think about measuring the variability of answer per given question (e.g., words look very different / very similar (cosine sim usin bert / use model trained on semantic sim)) --is cov correlated well with this? what I expect is high cov corr with small semantic variability between answers.
-    
-    
+
+
 
 
 
