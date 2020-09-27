@@ -10,78 +10,60 @@ Created on Fri Jun 26 10:37:17 2020
 """
 
 import json
-import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 from scipy.stats import spearmanr, kendalltau
 import csv
-
+from nltk.metrics import AnnotationTask
+import random
 
 filePath = "/Users/amc/Documents/TOIA-NYUAD/research/data/"
 
-with open(r"{}devTfIdfDialogues.json".format(filePath), "r") as read_file:
-    model1 = json.load(read_file)
-with open(r"{}devBm25Dialogues.json".format(filePath), "r") as read_file:
-    model2 = json.load(read_file)
-with open(r"{}devBERTbaseuncasedDialogues.json".format(filePath), "r") as read_file:
-    model3 = json.load(read_file)
-with open(r"{}devBERTqaRel1to100Dialogues.json".format(filePath), "r") as read_file:
-    model4 = json.load(read_file)
-with open(r"{}devBERTqaRel1toAllDialogues.json".format(filePath), "r") as read_file:
-    model5 = json.load(read_file)
-with open(r"{}devGoldDialogues.json".format(filePath), "r") as read_file:
-    gold = json.load(read_file)
+
+def open_json(file_path, file_name):
+    with open(r"{}{}".format(file_path, file_name), "r") as read_file:
+        return json.load(read_file)
 
 
-with open(r"{}mTurkResults_2turns_all.json".format(filePath), 'r') as read_file:
-    results = json.load(read_file)
+model1 = open_json(filePath, 'devTfIdfDialogues.json')
+model2 = open_json(filePath, 'devBm25Dialogues.json')
+model3 = open_json(filePath, 'devBERTbaseuncasedDialogues.json')
+model4 = open_json(filePath, 'devBERTqaRel1to100Dialogues.json')
+model5 = open_json(filePath, 'devBERTqaRel1toAllDialogues.json')
+gold = open_json(filePath, 'devGoldDialogues.json')
+results = open_json(filePath, 'mTurkResults_2turns_all.json')
 
+# Transform to df
 df = pd.DataFrame(gold)
 
+# Add field isGold to results dictionary
 for i in range(len(results)):
-    results[i]['isGold'] = 1 if df[df['id']==results[i]['snippet_id']]['model_retrieved_answers'].values[0][0]==results[i]['predicted_answer'] else 0
+    lookup = df[df['id']==results[i]['snippet_id']]['model_retrieved_answers']
+    pred_ans = results[i]['predicted_answer']
+    results[i]['isGold'] = 1 if lookup.values[0][0] == pred_ans else 0
 
 
-df = pd.DataFrame(model1)
-for i in range(len(results)):
-    try:
-        index = df[df['id']==results[i]['snippet_id']]['model_retrieved_answers'].values[0].index(results[i]['predicted_answer'])
-    except ValueError:
-        index = -1
-    results[i]['model1Score'] = 0 if index==-1 else df[df['id']==results[i]['snippet_id']]['scores'].values[0][index]
-
-df = pd.DataFrame(model2)
-for i in range(len(results)):
-    try:
-        index = df[df['id']==results[i]['snippet_id']]['model_retrieved_answers'].values[0].index(results[i]['predicted_answer'])
-    except ValueError:
-        index = -1
-    results[i]['model2Score'] = 0 if index==-1 else df[df['id']==results[i]['snippet_id']]['scores'].values[0][index]
-
-df = pd.DataFrame(model3)
-for i in range(len(results)):
-    try:
-        index = df[df['id']==results[i]['snippet_id']]['model_retrieved_answers'].values[0].index(results[i]['predicted_answer'])
-    except ValueError:
-        index = -1
-    results[i]['model3Score'] = 0 if index==-1 else df[df['id']==results[i]['snippet_id']]['scores'].values[0][index]
-
-df = pd.DataFrame(model4)
-for i in range(len(results)):
-    try:
-        index = df[df['id']==results[i]['snippet_id']]['model_retrieved_answers'].values[0].index(results[i]['predicted_answer'])
-    except ValueError:
-        index = -1
-    results[i]['model4Score'] = 0 if index==-1 else df[df['id']==results[i]['snippet_id']]['scores'].values[0][index]
+# Add model score to results
+# helper function:
+def add_score(model, var_name):
+    # results is global
+    df = pd.DataFrame(model)
+    for i in range(len(results)):
+        try:
+            index = df[df['id'] == results[i]['snippet_id']] \
+                ['model_retrieved_answers'].values[0]. \
+                index(results[i]['predicted_answer'])
+        except ValueError:
+            index = -1
+        results[i][var_name] = 0 if index==-1 else \
+            df[df['id']==results[i]['snippet_id']]['scores'].values[0][index]
 
 
-df = pd.DataFrame(model5)
-for i in range(len(results)):
-    try:
-        index = df[df['id']==results[i]['snippet_id']]['model_retrieved_answers'].values[0].index(results[i]['predicted_answer'])
-    except ValueError:
-        index = -1
-    results[i]['model5Score'] = 0 if index==-1 else df[df['id']==results[i]['snippet_id']]['scores'].values[0][index]
+add_score(model1, 'model1Score')
+add_score(model2, 'model2Score')
+add_score(model3, 'model3Score')
+add_score(model4, 'model4Score')
+add_score(model5, 'model5Score')
 
 workers_blacklist = []
 assignments_blacklist = []
@@ -165,8 +147,78 @@ for i in names:
     	print('Samples are correlated (reject H0) p=%.3f' % p)
 
 
-#dfResults.to_csv('data/dfResultsAll.txt', sep='\t', encoding='utf-8', index=False)
+dfResults.to_csv('data/dfResultsAll.txt', sep='\t', encoding='utf-8', index=False)
 
+worker_ids = []
+for item in results:
+    worker_ids.extend(item['worker_ids'])
+
+print('tot workers: {}\n tot ratings: {}'.format(
+    len(pd.unique(worker_ids)), len(worker_ids)
+    ))
+
+# Print InterAnnotators Agreements
+annotations_closest = []
+for annotation in results:
+    if len(set(annotation['worker_ids']) & set(workers_blacklist)) == 0:
+        sorted_labels = sorted(annotation['answers'])
+        if abs(sorted_labels[0] - sorted_labels[1]) < abs(sorted_labels[0] - sorted_labels[-1]):
+            labels = [sorted_labels[0], sorted_labels[1]]
+        else:
+            labels = [sorted_labels[-1], sorted_labels[1]]
+        random.shuffle(labels)
+        for i in range(2):
+            coder = 'c' + str(i + 1)
+            item = annotation['hit_id']
+            label = labels[i]
+            annotations_closest.append((coder, item, label))
+
+annotations_lowest = []
+for annotation in results:
+    if len(set(annotation['worker_ids']) & set(workers_blacklist)) == 0:
+        if annotation['worker_ids'] not in workers_blacklist:
+            sorted_labels = sorted(annotation['answers'])
+            labels = [sorted_labels[0], sorted_labels[1]]
+            random.shuffle(labels)
+            for i in range(2):
+                coder = 'c' + str(i + 1)
+                item = annotation['hit_id']
+                label = labels[i]
+                annotations_lowest.append((coder, item, label))
+
+annotations_highest = []
+for annotation in results:
+    if len(set(annotation['worker_ids']) & set(workers_blacklist)) == 0:
+        sorted_labels = sorted(annotation['answers'])
+        labels = [sorted_labels[1], sorted_labels[2]]
+        random.shuffle(labels)
+        for i in range(2):
+            coder = 'c' + str(i + 1)
+            item = annotation['hit_id']
+            label = labels[i]
+            annotations_highest.append((coder, item, label))
+
+annotations_random = []
+for annotation in results:
+    if len(set(annotation['worker_ids']) & set(workers_blacklist)) == 0:
+        sorted_labels = sorted(annotation['answers'])
+        labels = random.sample(sorted_labels, 2)
+        random.shuffle(labels)
+        for i in range(2):
+            coder = 'c' + str(i + 1)
+            item = annotation['hit_id']
+            label = labels[i]
+            annotations_random.append((coder, item, label))
+
+print('Weighted Kappa (Cohen, 1968) \n ------------------------- \n \
+      Closest two Ratings: {};\n \
+      Lowest two Ratings: {};\n \
+      Highest two Ratings: {};\n \
+      Random two Ratings: {}\n'.format(
+        AnnotationTask(data=annotations_closest).weighted_kappa(),
+        AnnotationTask(data=annotations_lowest).weighted_kappa(),
+        AnnotationTask(data=annotations_highest).weighted_kappa(),
+        AnnotationTask(data=annotations_random).weighted_kappa()))
 
 ### FOR WHICH QUESTIONS THERE IS LESS AGREEABLENESS? CoV by Q, check what they are, then calc. corr for cov high and small ###
 
@@ -222,19 +274,18 @@ print(
       # answers that go well with only a few questions (check if true)
       set(B) - set(set(A) & set(B))
       )
-
 #these are groups of answers that generate more disagreement (A) and less disagreements (B).
 
-dfResults.to_csv('data/dfResults_qualified_nogold.txt', sep='\t', encoding='utf-8', index=False)
+dfResults.to_csv('data/dfResults_qualified_nogold.txt',  \
+                 sep='\t', encoding='utf-8', index=False)
 
 ###use crowd ratings as annotations and and calc Recall@x
-#build dataset like multiturn dialogues with BA1 - 3 (Assuming 3 is still acceptable)
-
+#build dataset like multiturn dialogues with BA1 - etc.
 lsCheck = []
+# For question in last turn of workers annotations
 for q in set(dfResults['last_turn']):
-    #q = 'Oh I see. I see. Yeah. Yeah. So how did you adapt to the Arabic culture?'
     answers = list(dfResults[dfResults['last_turn'] == q]['predicted_answer'])
-    scores = list(dfResults[dfResults['last_turn'] == q]['avg_answer'])
+    scores = list(dfResults[dfResults['last_turn'] == q]['trusted_avg_answer'])
     selindices = np.argsort(scores, axis=0)[::-1]
     sortescores = np.sort(scores, axis=0)[::-1]
     mask = selindices[sortescores >= 3.5]
@@ -247,11 +298,10 @@ for i in range(1, 1+nBA):
     dicDf['BA{}'.format(i)] = []
 
 for q in set(dfResults['last_turn']):
-    #q = 'Oh I see. I see. Yeah. Yeah. So how did you adapt to the Arabic culture?'
     dicDf['Q'].append(q)
     answers = list(dfResults[dfResults['last_turn'] == q]['predicted_answer'])
-    #1st option
-    scores = list(dfResults[dfResults['last_turn'] == q]['avg_answer'])
+    # 1st option
+    scores = list(dfResults[dfResults['last_turn'] == q]['trusted_avg_answer'])
     selindices = np.argsort(scores, axis=0)[::-1]
     sortescores = np.sort(scores, axis=0)[::-1]
     mask = selindices[sortescores >= 3.5]
@@ -276,43 +326,46 @@ for q in set(dfResults['last_turn']):
 
 dfCrowdAnnotations = pd.DataFrame(dicDf)
 
-#borrow test_set_questions_ooctrain function from LREC_code_postreview.py and edit index
+dfCrowdAnnotations.to_csv('data/dfCrowdAnnotations_opt1.txt', sep='\t', encoding='utf-8', index=False)
+
+
+# borrow test_set_questions_ooctrain function from LREC_code_postreview.py and edit index
 def transformDialogues(dfCrowdAnnotations, train_df):
     # modified to use index of answers in test WOzAnswers --> replaced with WOzAnswersIDs
     Context, WOzAnswersIDs = [], []
+    allAs = list(train_df.Utterance.values)
     for example_id in range(len(dfCrowdAnnotations)):
         exampleWOzAnswers = list(dfCrowdAnnotations.iloc[example_id, 1:].values)
 #        if not allnull(exampleWOzAnswers):
         tmp_WAs = []
-        allAs = list(train_df.Utterance.values)
         for distr in allAs:
             if distr in exampleWOzAnswers:
-                tmp_WAs.append(allAs.index(distr))
+                tmp_WAs.append(allAs.index(distr)) ## INDEX IS BAD: THERE ARE MORE THAN 1 INDEX FOR ONE DISTR
         Context.append(dfCrowdAnnotations.iloc[example_id, 0])
         WOzAnswersIDs.append(tmp_WAs)
     return pd.DataFrame({'Context':Context, 'WOzAnswers':WOzAnswersIDs})
 
-# #run LREC_code_postreview until row 300
-# valid_df = transformDialogues(dfCrowdAnnotations, train_df)
 
-#run LREC_code_postreview post row 337 to get results
-## OCCHIO A come si calcoalno i recall@k. il numero di esempi non dovrebbe essere il numero di uniche q-a pairs annotate? La funzione al momento calcola solo il numero di q...
-    ## Edited evaluate_recall_thr to use as no. of examples all the q-a's annotated: Recall@k = (# of recommended items @k that are relevant) / (total # of relevant items). I could also calculate Precision@k = (# of recommended items @k that are relevant) / (# of recommended items @k) but need to define threshold (what is recommended vs. what's not)
-###Note: cannot really use crowd annotations as dev set annotations because I should change the train set too. I should add more qa pairs in train according to what has been annotated.
-#Let's do it!
-
+# not sure if train should stay the same or not
+# Cannot really use crowd annotations as dev set annotations because I
+# should change the train set too. I should add more qa pairs in train
+# according to what has been annotated. Let's do it:
 # def updateTrain(df):
-#     #get questions from old train that are answered by margarita's annotations.
-#     df = df.loc[dfResults.avg_answer >= 3.5, ['last_turn', 'predicted_answer']]
+#     # get questions from old train that are answered by margarita's annotations.
+#     df = df.loc[dfResults.trusted_avg_answer >= 3.5, ['last_turn', 'predicted_answer']]
 #     df.reset_index(level=None, drop=True, inplace=True)
 #     df.rename(columns = {'last_turn' : 'Context', 'predicted_answer' : 'Utterance'}, inplace = True)
 #     return df.loc[:, ['Context', 'Utterance']]
 
-#run LREC_code_postreview until row 277
-#train_df = updateTrain(dfResults)
-valid_df = transformDialogues(dfCrowdAnnotations, train_df)
-### using tf-idf we can see that recalls @1,2,5 are actually worse than margarita's annotations, and recalls @10 and @20 are the same. Looks like the technique is robust by change of datasets, by low k recalls are weaker because annotations too generous? Is it worth do the same job for the BERT qa relevance (lots of work)
 
+# train_df = updateTrain(dfResults)
+
+train_df = pd.read_csv('/Users/amc/Documents/TOIA-NYUAD/research/MargaritaCorpusKB.csv', encoding='utf-8')
+valid_df = transformDialogues(dfCrowdAnnotations, train_df)
+
+#train_df.to_csv('data/crowd_train_df_opt1.txt', sep='\t', encoding='utf-8', index=False)
+
+valid_df.to_csv('data/crowd_valid_df_opt1.txt', sep='\t', encoding='utf-8', index=False)
 
 
 # other things to check:
