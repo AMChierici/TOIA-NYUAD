@@ -53,7 +53,9 @@ test_dialogues = train_test_dialogues.loc[train_test_dialogues.Experiment=="TEST
 
 KBanswers = list(np.unique(knowledgebase.Utterance.values))
 
-#no_distr_to_sample = 100
+# unComment for 1to100
+# no_distr_to_sample = 100
+#
 Context, Utterance, Labels= [], [], []
 for example_id in range(len(knowledgebase)):
     Context.append(knowledgebase.Context.values[example_id])
@@ -64,18 +66,21 @@ for example_id in range(len(knowledgebase)):
             np.array(range(len(KBanswers)))
             [np.isin(range(len(KBanswers)), id_to_exclude, invert=True)]
             ]
-    #np.random.seed(example_id)
-    for answer in tmp_distractors: #np.random.choice(tmp_distractors, no_distr_to_sample, replace=False):
+    # unComment for 1to100
+    # np.random.seed(example_id)
+    #
+    for answer in tmp_distractors:  # Use for 1to100: for answer in np.random.choice(tmp_distractors, no_distr_to_sample, replace=False):
                 Context.append(knowledgebase.Context.values[example_id])
                 Utterance.append(str(answer))
-                Labels.append(0)            
-    # Context.append(knowledgebase.Context.values[example_id])
+                Labels.append(0)
 
 train_df = pd.DataFrame({'#1 String':Context, '#2 String':Utterance, 'Quality':Labels})
 
+# comment for 1to100
 train_df.to_csv('data/tmp.txt', sep='\t', encoding='utf-8', index=False, header=False)
+#
 
-### Skip for 1-400 ratio. Use augment.py instead
+# unComment for 1to100. for 1toAll Use augment.py instead
 # for i in range(len(train_df)):
 #     try:
 #         tmp_df = pd.DataFrame({
@@ -86,11 +91,13 @@ train_df.to_csv('data/tmp.txt', sep='\t', encoding='utf-8', index=False, header=
 #         train_df = train_df.append(tmp_df)
 #     except Exception:
 #         pass
-###
+#
 
+# comment for 1to100
 train_df = pd.read_csv('data/eda_tmp.txt', sep='\t', encoding='utf-8', header=None)
 # add back title
 train_df.columns = ['#1 String', '#2 String', 'Quality']
+#
 
 # Shuffle
 train_df = train_df.sample(frac=1, random_state=1234).reset_index(drop=True)
@@ -109,7 +116,7 @@ for example_id in range(len(validation_dialogues)):
             Context.append(validation_dialogues.iloc[example_id, 4])
             WOzAnswers.append(a)
             Labels.append(0)
-    else:  
+    else:
         for answer in exampleWOzAnswers:
             if not pd.isnull(answer):
                 Context.append(validation_dialogues.iloc[example_id, 4])
@@ -126,7 +133,7 @@ for example_id in range(len(validation_dialogues)):
             Context.append(validation_dialogues.iloc[example_id, 4])
             WOzAnswers.append(a)
             Labels.append(0)
-            
+
 valid_df = pd.DataFrame({'#1 String':Context, '#2 String':WOzAnswers, 'Quality':Labels})
 
 
@@ -139,7 +146,7 @@ for example_id in range(len(test_dialogues)):
             Context.append(test_dialogues.iloc[example_id, 4])
             WOzAnswers.append(a)
             Labels.append(0)
-    else:  
+    else:
         for answer in exampleWOzAnswers:
             if not pd.isnull(answer):
                 Context.append(test_dialogues.iloc[example_id, 4])
@@ -156,7 +163,7 @@ for example_id in range(len(test_dialogues)):
             Context.append(test_dialogues.iloc[example_id, 4])
             WOzAnswers.append(a)
             Labels.append(0)
-            
+
 test_df = pd.DataFrame({'#1 String':Context, '#2 String':WOzAnswers, 'Quality':Labels})
 
 # Create indices and output data sets
@@ -164,8 +171,10 @@ train_df['#1 ID'] = 100 + train_df.index.values
 train_df['#2 ID'] = max(train_df['#1 ID']) + 2 + train_df.index.values
 valid_df['#1 ID'] = max(train_df['#2 ID']) + 2 + valid_df.index.values
 valid_df['#2 ID'] = max(valid_df['#1 ID']) + 2 + valid_df.index.values
+valid_df.to_csv('data/valid_dev2valid_preds.tsv', sep='\t', encoding='utf-8', index=False)
 test_df['#1 ID'] = max(valid_df['#2 ID']) + 2 + test_df.index.values
 test_df['#2 ID'] = max(test_df['#1 ID']) + 2 + test_df.index.values
+test_df.to_csv('data/test_dev2test_preds.tsv', sep='\t', encoding='utf-8', index=False)
 
 # Use train train, dev as dev, and predict on test data.
 valid_df[["#1 ID", "#2 ID"]].to_csv('data/dev_ids.tsv', sep='\t', encoding='utf-8', index=False, header=False)
@@ -176,10 +185,10 @@ test_df[["Quality", "#1 ID", "#2 ID", "#1 String", "#2 String"]].to_csv('data/ms
 
 np.sum(test_df['Quality'])
 416/137490
-       
+
 ###################
 #FIX SPANISH ENCODING --va a capo prima di ventido anos.
-            
+
 ###-clear space-###
 del(train_df, ar_msk)
 ###################
