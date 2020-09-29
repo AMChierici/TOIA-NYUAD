@@ -1,19 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Sun May  3 11:00:27 2020
-
-@author: amc
-"""
-
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Thu Oct 17 13:35:07 2019
-
-@author: amc
-"""
-
 import pandas as pd
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -34,7 +18,7 @@ from sklearn.ensemble import RandomForestClassifier,GradientBoostingClassifier
 nltk.download('stopwords')
 ps = SnowballStemmer('english')
 warnings.filterwarnings('ignore')
-import math 
+import math
 # !pip install brewer2mpl
 import numpy as np
 import pandas as pd
@@ -46,6 +30,9 @@ import torch
 from pytorch_pretrained_bert import BertTokenizer, BertModel, BertForMaskedLM
 from sklearn.metrics.pairwise import cosine_similarity
 import sys
+from rank_bm25 import BM25Okapi
+import random as rd
+
 
 
 zeroturndialogue = pd.read_csv('/Users/amc/Documents/TOIA-NYUAD/research/knowledgebase.csv', encoding='utf-8')
@@ -54,8 +41,8 @@ zeroturndialogue = zeroturndialogue.fillna('')
 rows, cols = zeroturndialogue.shape
 
 ID, category, context, utterance, tmp = [], [], [], [], []
-    
-for r in range(rows): 
+
+for r in range(rows):
     rID = zeroturndialogue.loc[r, 'ID']
     rcategory = zeroturndialogue.loc[r, 'Category']
     rquestions = zeroturndialogue.iloc[r, 4:]
@@ -77,13 +64,13 @@ train_df = train_df[train_df.Context != 'SIRI-PRE']
 train_df = train_df[train_df.Context != 'SIRI-POST']
 #train_df = train_df[train_df.Category != 'C-ShortAnswers']
 #drop duplicates (like "bye - bye bye!", etc.)
-train_df.drop_duplicates(subset='tmp', keep='last', inplace=True) 
+train_df.drop_duplicates(subset='tmp', keep='last', inplace=True)
 # and remove tmp
 train_df = train_df.drop('tmp', axis=1)
 train_df = train_df.reset_index()
 
 #Dor creating resource repo, commment lines 84-86 above (removing filler, siri pre and siri post) and output csv (then removed index and renamed contest, utt as Q, A)
-# train_df.to_csv('MargaritaCorpusKB.csv', encoding='utf-8')
+train_df.to_csv('MargaritaCorpusKB.csv', encoding='utf-8')
 
 #################
 
@@ -91,13 +78,13 @@ train_df = train_df.reset_index()
 multiturndialogues = pd.read_csv('/Users/amc/Documents/TOIA-NYUAD/research/DIALOGUES.csv', encoding='utf-8')
 #update conversation number so that EDU and PER have different count / conversation ID
 multiturndialogues.loc[multiturndialogues.Mode=='EDU', 'Conversation'] = multiturndialogues.loc[multiturndialogues.Mode=='EDU', 'Conversation'] + 10
-      
+
 
 #-- functions --#
 def test_set_questions_ooctrain(multiturndialogues, train_df):
     # modified to use index of answers in test WOzAnswers --> replaced with WOzAnswersIDs
     Context, WOzAnswersIDs = [], []
-    
+
     for example_id in range(len(multiturndialogues)):
         exampleWOzAnswers = list(multiturndialogues.iloc[example_id, 7:].values)
 #        if not allnull(exampleWOzAnswers):
@@ -109,8 +96,24 @@ def test_set_questions_ooctrain(multiturndialogues, train_df):
         Context.append(multiturndialogues.iloc[example_id, 4])
         WOzAnswersIDs.append(tmp_WAs)
 
-    
-    return pd.DataFrame({'Context':Context, 'WOzAnswers':WOzAnswersIDs})  
+
+    return pd.DataFrame({'Context':Context, 'WOzAnswers':WOzAnswersIDs})
+
+
+def transformDialogues(dfCrowdAnnotations, train_df):
+    # modified to use index of answers in test WOzAnswers --> replaced with WOzAnswersIDs
+    Context, WOzAnswersIDs = [], []
+    allAs = list(train_df.Utterance.values)
+    for example_id in range(len(dfCrowdAnnotations)):
+        exampleWOzAnswers = list(dfCrowdAnnotations.iloc[example_id, 1:].values)
+#        if not allnull(exampleWOzAnswers):
+        tmp_WAs = []
+        for distr in allAs:
+            if distr in exampleWOzAnswers:
+                tmp_WAs.append(allAs.index(distr)) ## INDEX IS BAD: THERE ARE MORE THAN 1 INDEX FOR ONE DISTR
+        Context.append(dfCrowdAnnotations.iloc[example_id, 0])
+        WOzAnswersIDs.append(tmp_WAs)
+    return pd.DataFrame({'Context':Context, 'WOzAnswers':WOzAnswersIDs})
 
 
 def preprocess(text):
@@ -130,16 +133,24 @@ def allnull(somelist):
 
 def evaluate_recall_thr(y, y_test, k=10, thr=0.7):
     # modifying this to allow fine-tuning the threshold and counting empty answers
+    # y_margarita, valid_df.WOzAnswers.values
     num_examples = 0
     num_correct_ans = 0
     num_correct_nonans = 0
+    i = 0
     for scores, labels in zip(y, y_test):
+        # scores = y[16]
+        # labels = y_test[16]
         predictions = np.argsort(scores, axis=0)[::-1] #added when scores are numbers and not predicted labels
         sorted_scores = np.sort(scores, axis=0)[::-1] #added when scores are numbers and not predicted labels
         above_thr_selections = [item for item, value in zip(predictions[:k], sorted_scores[:k]) if value>thr]
         A, B = set(labels), set(above_thr_selections)
         num_examples += len(A) #num of examples is num of (q, annotated a) pairs. + 1 if no annotated ans exists.
         intersection = A & B
+        # print(i, intersection)
+        # if len(A)==0:
+        #     print(('because unlabeled'))
+        # i+=1
         if len(intersection)>0:
             num_correct_ans += len(list(intersection))
         elif len(intersection)==0 and len(A)==0 and len(B)==0:
@@ -152,11 +163,11 @@ def evaluate_recall_thr_star(y, y_test, k=10, thr=0.7):
     num_examples = len(y)
     num_correct_ans = 0
     num_correct_nonans = 0
+    i = 0
     for scores, labels in zip(y, y_test):
         predictions = np.argsort(scores, axis=0)[::-1] #added when scores are numbers and not predicted labels
         sorted_scores = np.sort(scores, axis=0)[::-1] #added when scores are numbers and not predicted labels
         above_thr_selections = [item for item, value in zip(predictions[:k], sorted_scores[:k]) if value>thr]
-#        intersection = set(labels) & set(predictions[:k])
         A, B = set(labels), set(above_thr_selections)
         intersection = A & B
         if len(intersection)>0:
@@ -166,7 +177,7 @@ def evaluate_recall_thr_star(y, y_test, k=10, thr=0.7):
             num_correct_nonans += 1
     return (num_correct_ans+num_correct_nonans)/num_examples, num_correct_ans, num_correct_nonans
 
-def print_retrieval_metrics(y, valid_df, KBanswers):                         
+def print_retrieval_metrics(y, valid_df_orig, KBanswers):
     query_precisions, query_recalls, ave_precisions, rec_ranks = [], [], [], []
     for query, retrieval_scores in zip(list(valid_df_orig.Q.values), y):
         sorted_retrieval_scores = np.sort(retrieval_scores, axis=0)[::-1]
@@ -184,7 +195,7 @@ def print_retrieval_metrics(y, valid_df, KBanswers):
             sorted_retrieved_documents = [KBanswers[i] for i in sorted_id_retreved_documents]
             columns_annotations = valid_df_orig.columns[valid_df_orig.columns.get_loc('BA1'):]
             relevant_documents = [doc for doc in list(valid_df_orig[columns_annotations].loc[valid_df_orig.Q.values==query].values[0]) if doc==doc]
-            query_recalls.append(len(set(relevant_documents) & set(sorted_retrieved_documents)) / len(set(relevant_documents)))    
+            query_recalls.append(len(set(relevant_documents) & set(sorted_retrieved_documents)) / len(set(relevant_documents)))
             p_at_ks, rel_at_ks = [], []
             for k in range(1, 1+len(set(sorted_retrieved_documents))):
                 p_at_ks.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:k])) / k)
@@ -241,7 +252,7 @@ def bertembed(text):
     segments_tensors = torch.tensor([segments_ids])
     # Predict hidden states features for each layer
     with torch.no_grad():
-        encoded_layers, _ = model(tokens_tensor, segments_tensors)    
+        encoded_layers, _ = model(tokens_tensor, segments_tensors)
     ## Note that I shall try different strategies to get a single vector for the entire sentence.
     sentence_embedding = torch.mean(encoded_layers[11], 1)
     #sentence_embedding = torch.median(encoded_layers[11], 1)[0] #REMINDER: 12 layers in base (index 11), 24 layers in large (index 23)
@@ -251,8 +262,8 @@ def bertembed(text):
     #can add embedding of token [CLS], and of [SEP]
     return(sentence_embedding.tolist())
 
-def saveJsonDialogues(filepath, ga=False):
-    valid_df = multiturndialogues.loc[multiturndialogues.Experiment.isin(["TRAIN"])]
+def saveJsonDialogues(filepath, ga=False, splitset="TRAIN"):
+    valid_df = multiturndialogues.loc[multiturndialogues.Experiment.isin([splitset])]
     valid_df.reset_index(level=None, drop=True, inplace=True)
     dialogueSet = {
         "id": "",
@@ -263,7 +274,7 @@ def saveJsonDialogues(filepath, ga=False):
         "scores": []
         }
     dialogues = []
-    for testex in range(1, len(valid_df)):        
+    for testex in range(1, len(valid_df)):
         dialogueSet["id"] = testex
         dialogueSet["turn0"] = valid_df.Q[testex-1]
         dialogueSet["turn1"] = valid_df.A[testex-1]
@@ -275,11 +286,11 @@ def saveJsonDialogues(filepath, ga=False):
             Qids = np.argsort(y[testex], axis=0)[::-1][:10]
             dialogueSet["model_retrieved_answers"] = list(train_df.Utterance[Qids])
             dialogueSet["scores"] = list(np.sort(y[testex], axis=0)[::-1][:10])
-        dialogues.append(dialogueSet.copy()) 
+        dialogues.append(dialogueSet.copy())
     import json
     with open(filepath, 'w') as fout:
         json.dump(dialogues , fout)
-        
+
 def outputPred(y, y_test, lsTraincorpus, txtFilepath, intK, lsQuestions):
     lsSortedScores = []
     lsSelections = []
@@ -307,67 +318,74 @@ def outputPred(y, y_test, lsTraincorpus, txtFilepath, intK, lsQuestions):
 #-- EOfn --#  ###NOTE: need to add to the dialogues TRAIN the wizard answers
 
 
-
 valid_df_orig = multiturndialogues.loc[multiturndialogues.Experiment.isin(["TRAIN"])]# & multiturndialogues.Mode.isin(["PER"])]
 valid_df_orig.reset_index(level=None, drop=True, inplace=True)
 valid_df = test_set_questions_ooctrain(valid_df_orig, train_df)
 
-# Train TFIDF predictor
+crowd_valid_df_orig = pd.read_csv('data/dfCrowdAnnotations_opt1.txt', sep='\t', encoding='utf-8')
+crowd_valid_df = transformDialogues(crowd_valid_df_orig, train_df)
+
+merge_valid_df = crowd_valid_df.merge(valid_df, on='Context')
+tmp = []
+for _, row in merge_valid_df.iterrows():
+    x = row['WOzAnswers_x']
+    y = row['WOzAnswers_y']
+    x.extend(y)
+    tmp.append(list(set(x)))
+merge_valid_df['WOzAnswers'] = pd.Series(tmp)
+
+####### TFIDF ######
 pred = TFIDFPredictor()
 train_corpus = train_df.Context.values
 pred.train(train_corpus)
 
-y = [pred.predict(valid_df.Context[x], list(train_corpus)) for x in range(len(valid_df))]
+y_tfidf = [pred.predict(valid_df.Context[x], list(train_corpus)) for x in range(len(valid_df))]
+#saveJsonDialogues(filepath='data/devGoldDialogues.json', ga=True)
+#saveJsonDialogues('data/devTfIdfDialogues.json')
 
-# Evaluate TFIDF predictor QUESTION SIMILARITY (use train_df.Utterance.values for ANSWER SIM)
-for i in range(3):
-    for n in [1, 2, 5, 10, 20]:
-        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
+crowd_y_tfidf = [pred.predict(crowd_valid_df.Context[x], list(train_corpus)) for x in range(len(crowd_valid_df))]
 
-saveJsonDialogues(filepath='data/devGoldDialogues.json', ga=True)
-saveJsonDialogues('data/devTfIdfDialogues.json')
-for i in range(3):
-    for n in [1, 2, 5, 10, 20]:
-        print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
-  
-#valid_df_orig = dfCrowdAnnotations
-print_retrieval_metrics(y, valid_df_orig, list(train_df.Utterance.values))
-        
+def print_metrics(y, crowd_y):
+    for i in range(3):
+        for n in [1, 2, 5, 10, 20]:
+            print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
+    for i in range(3):
+        for n in [1, 2, 5, 10, 20]:
+            print("Recall@{}: {:g}".format(n, evaluate_recall_thr(crowd_y, crowd_valid_df.WOzAnswers.values, n, thr=0)[i]))
+    for i in range(3):
+        for n in [1, 2, 5, 10, 20]:
+            print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
+    for i in range(3):
+        for n in [1, 2, 5, 10, 20]:
+            print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(crowd_y, crowd_valid_df.WOzAnswers.values, n, thr=0)[i]))
+    print_retrieval_metrics(y, valid_df_orig, list(train_df.Utterance.values))
+    print_retrieval_metrics(crowd_y, crowd_valid_df_orig, list(train_df.Utterance.values))
+
+
+print_metrics(y=y_tfidf, crowd_y=crowd_y_tfidf)
+# Need to put one more requirements in the function above to run the line below
+# print_metrics(y=y_tfidf, crowd_y=crowd_y_tfidf, valid_df=merge_valid_df)
+
+
 ###### BM25 ######
 # Train BM25 predictor q-q relevance
-from rank_bm25 import BM25Okapi
-
-#corpus = list(train_df.Context.values)
-
 tokenized_corpus = [doc.split(" ") for doc in train_corpus]
 bm25 = BM25Okapi(tokenized_corpus)
 
-y = [bm25.get_scores(valid_df.Context[x].split(" ")) for x in range(len(valid_df))]
+y_bm25 = [bm25.get_scores(valid_df.Context[x].split(" ")) for x in range(len(valid_df))]
+# saveJsonDialogues('data/devBm25Dialogues.json')
 
-# Evaluate BM25 predictor
-for i in range(3):
-    for n in [1, 2, 5, 10, 20]:
-        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
-
-saveJsonDialogues('data/devBm25Dialogues.json')
-
-for i in range(3):
-    for n in [1, 2, 5, 10, 20]:
-        print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y, valid_df.WOzAnswers.values, n, thr=0)[i]))  
-        
-#valid_df_orig = dfCrowdAnnotations
-print_retrieval_metrics(y, valid_df_orig, list(train_df.Utterance.values))
+crowd_y_bm25 = [bm25.get_scores(crowd_valid_df.Context[x].split(" ")) for x in range(len(crowd_valid_df))]
+print_metrics(y=y_bm25, crowd_y=crowd_y_bm25)
 
 
-########## USING BERT ##########
+####### BERT #######
 # Load pre-trained model tokenizer (vocabulary)
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 # Load pre-trained model (weights)
 model = BertModel.from_pretrained('bert-base-uncased')
 # Put the model in "evaluation" mode, meaning feed-forward operation.
 model.eval()
-
-#test = bertembed("hi, how are you?")
 
 # QUESTION SIMILARITY
 train_embeddings = []
@@ -378,93 +396,128 @@ valid_embeddings = []
 for text in valid_df.Context.values:
     valid_embeddings.append(bertembed(text)[0])
 valid_embeddings = np.array(valid_embeddings)
+crowd_valid_embeddings = []
+for text in crowd_valid_df.Context.values:
+    crowd_valid_embeddings.append(bertembed(text)[0])
+crowd_valid_embeddings = np.array(crowd_valid_embeddings)
 
- 
-y = [LMPredictor_new(valid_embeddings[x], train_embeddings) for x in range(len(valid_embeddings))]
-for i in range(3):
-    for n in [1, 2, 5, 10, 20]:
-        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
-#MEDIAN pooling better than mean and close to TFIDF on test set --need more error analysis because HP: BERT does better selection than tfidf even if wrong question (second best predition by bert better than second best by tfidf). Mode pretty shit. Max better than mode, worse than mean. mean-max not great too. Bert cased doesn't make it better. speach in practice will be converted to lowercase text anyway. Large BERT doesn't bring improvements
+y_bert = [LMPredictor_new(valid_embeddings[x], train_embeddings) for x in range(len(valid_embeddings))]
+# saveJsonDialogues('data/devBERTbaseuncasedDialogues.json')
 
-saveJsonDialogues('data/devBERTbaseuncasedDialogues.json')
-for i in range(3):
-    for n in [1, 2, 5, 10, 20]:
-        print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
+crowd_y_bert = [LMPredictor_new(crowd_valid_embeddings[x], train_embeddings) for x in range(len(crowd_valid_embeddings))]
+print_metrics(y=y_bert, crowd_y=crowd_y_bert)
 
-#valid_df_orig = dfCrowdAnnotations
-print_retrieval_metrics(y, valid_df_orig, list(train_df.Utterance.values))
-
+y_tfidf_bert = [list(np.array(tfidf) + np.array(bert)) for tfidf, bert in zip(y_tfidf, y_bert)]
+crowd_y_tfidf_bert = [list(np.array(tfidf) + np.array(bert)) for tfidf, bert in zip(crowd_y_tfidf, crowd_y_bert)]
+print_metrics(y=y_tfidf_bert, crowd_y=crowd_y_tfidf_bert)
 
 
-# qarelevance
+######## q-a relevance approach #######
 preds = pd.read_csv('/Users/amc/Documents/glue_data/Margarita_1_100_ratio/valid_results_mrpc_proba.txt', sep='\t', encoding='utf-8')['prediction'].values
-###DO run toia_data_processor.py until row 166
-valid_preds = pd.DataFrame({'q': valid_df['#1 String'].values, 'A': valid_df['#2 String'].values, 'y_pred': preds})
-###DO re-run this script until row 312 or analyzeResults.py row 268 for view from the crowd //rewrite this. I need to put back the old train_df and the old valid_df. Need to simply to save them under a different name before running toia_data_prcessor.py and then put back 
-y = []
+valid_df2valid_preds = pd.read_csv('data/valid_dev2valid_preds.tsv', sep='\t', encoding='utf-8')
+
+valid_preds = pd.DataFrame({'q': valid_df2valid_preds['#1 String'].values, 'A': valid_df2valid_preds['#2 String'].values, 'y_pred': preds})
+
+y_qabert = []
 for i in range(len(valid_df_orig)):
     ranks=[]
     for j in train_corpus:
         answers = train_df[train_df['Context']==j]['Utterance'].values[0]
         rank = valid_preds[(valid_preds['A']==answers) & (valid_preds['q']==valid_df_orig.loc[i, 'Q'])]['y_pred'].values[0]      #change 'Q' to 'Context' when running for Crowd annotations
         ranks.append(rank)
-    y.append(ranks)
-    
-valid_df = test_set_questions_ooctrain(valid_df_orig, train_df)
+    y_qabert.append(ranks)
 
-for i in range(3):
-    for n in [1, 2, 5, 10, 20]:
-        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
+# saveJsonDialogues('data/devBERTqaRel1to100Dialogues.json')
+# outputPred(y, valid_df.WOzAnswers.values, train_df.Utterance.values, '/Users/amc/Documents/TOIA-NYUAD/research/data/devBERTqaRel1to100Results.csv', 20, valid_df.Context.values)
+# note that if instead of train_df.Utterance.values we use train_corpus or train_df.Context.values (which is the same thing), we get the questions instead of the answers
 
-saveJsonDialogues('data/devBERTqaRel1to100Dialogues.json')
+crowd_y_qabert = []
+for i in range(len(crowd_valid_df_orig)):
+    ranks=[]
+    for j in train_corpus:
+        answers = train_df[train_df['Context']==j]['Utterance'].values[0]
+        rank = valid_preds[(valid_preds['A']==answers) & (valid_preds['q']==crowd_valid_df_orig.loc[i, 'Q'])]['y_pred'].values[0]      #change 'Q' to 'Context' when running for Crowd annotations
+        ranks.append(rank)
+    crowd_y_qabert.append(ranks)
 
-for i in range(3):
-    for n in [1, 2, 5, 10, 20]:
-        print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
+print_metrics(y=y_qabert, crowd_y=crowd_y_qabert)
 
-outputPred(y, valid_df.WOzAnswers.values, train_df.Utterance.values, '/Users/amc/Documents/TOIA-NYUAD/research/data/devBERTqaRel1to100Results.csv', 20, valid_df.Context.values)
-#note that if instead of train_df.Utterance.values we use train_corpus or train_df.Context.values (which is the same thing), we get the questions instead of the answers
+y_tfidf_qabert = [list(np.array(tfidf) + np.array(bert)) for tfidf, bert in zip(y_tfidf, y_qabert)]
+crowd_y_tfidf_qabert = [list(np.array(tfidf) + np.array(bert)) for tfidf, bert in zip(crowd_y_tfidf, crowd_y_qabert)]
+print_metrics(y=y_tfidf_qabert, crowd_y=crowd_y_tfidf_qabert)
 
-valid_df_orig = dfCrowdAnnotations
-print_retrieval_metrics(y, valid_df_orig, list(train_df.Utterance.values))
+y_bert_qabert = [list(np.array(bert) + np.array(qabert)) for bert, qabert in zip(y_bert, y_qabert)]
+crowd_y_bert_qabert = [list(np.array(bert) + np.array(qabert)) for bert, qabert in zip(crowd_y_bert, crowd_y_qabert)]
+print_metrics(y=y_bert_qabert, crowd_y=crowd_y_bert_qabert)
 
 
-        
-#RANDOM
-import random as rd
+# 1 to All ratio
+preds = pd.read_csv('/Users/amc/Documents/glue_data/Margarita_1_All_ratio/valid_results_mrpc.txt', sep='\t', encoding='utf-8')['prediction'].values
+valid_df2valid_preds = pd.read_csv('data/valid_dev2valid_preds.tsv', sep='\t', encoding='utf-8')
+valid_preds = pd.DataFrame({'q': valid_df2valid_preds['#1 String'].values, 'A': valid_df2valid_preds['#2 String'].values, 'y_pred': preds})
+y_qabertAll = []
+for i in range(len(valid_df_orig)):
+    ranks=[]
+    for j in train_corpus:
+        answers = train_df[train_df['Context']==j]['Utterance'].values[0]
+        rank = valid_preds[(valid_preds['A']==answers) & (valid_preds['q']==valid_df_orig.loc[i, 'Q'])]['y_pred'].values[0]      #change 'Q' to 'Context' when running for Crowd annotations
+        ranks.append(rank)
+    y_qabertAll.append(ranks)
+crowd_y_qabertAll = []
+for i in range(len(crowd_valid_df_orig)):
+    ranks=[]
+    for j in train_corpus:
+        answers = train_df[train_df['Context']==j]['Utterance'].values[0]
+        rank = valid_preds[(valid_preds['A']==answers) & (valid_preds['q']==crowd_valid_df_orig.loc[i, 'Q'])]['y_pred'].values[0]      #change 'Q' to 'Context' when running for Crowd annotations
+        ranks.append(rank)
+    crowd_y_qabertAll.append(ranks)
+print_metrics(y=y_qabertAll, crowd_y=crowd_y_qabertAll)
+
+
+
+######### RANDOM ########
 rd.seed(2020)
 tmp = list(range(1,1+len(train_corpus)))
-y_random = [rd.sample(tmp, len(tmp)) for x in range(len(valid_df))] 
-for i in range(3):
-    for n in [1, 2, 5, 10, 20]:
-        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y_random, valid_df.WOzAnswers.values, n, thr=0)[i]))
-for i in range(3):
-    for n in [1, 2, 5, 10, 20]:
-        print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y_random, valid_df.WOzAnswers.values, n, thr=0)[i]))
-
-#valid_df_orig = dfCrowdAnnotations
-print_retrieval_metrics(y_random, valid_df_orig, list(train_df.Utterance.values))
+y_random = [rd.sample(tmp, len(tmp)) for x in range(len(valid_df))]
+rd.seed(2020)
+crowd_y_random = [rd.sample(tmp, len(tmp)) for x in range(len(valid_df))]
+print_metrics(y=y_random, crowd_y=crowd_y_random)
 
 
-
-###use annotations as model and calc Recall@x
-# valid_df, dfResults from analyzeResults.py
-# train_df from this script
+### use annotations as model and calc Recall@x ###
+dfResults = pd.read_csv('data/dfResults_qualified_nogold.txt',  \
+                 sep='\t', encoding='utf-8')
 
 # this is human performance
-valid_df_orig = dfCrowdAnnotations
 lsTrainAnswers = list(train_df.Utterance.values)
+crowd_y_crowd = []
+for q in list(crowd_valid_df_orig.Q.values):
+    answers = list(dfResults[dfResults['last_turn'] == q]['predicted_answer'])
+    train_idxs = [lsTrainAnswers.index(ans) for ans in answers]
+    #1st option
+    scores = list(dfResults[dfResults['last_turn'] == q]['trusted_avg_answer'])
+    lsTmp = [0]*len(lsTrainAnswers)
+    for i, v in enumerate(train_idxs):
+        lsTmp[v] = scores[i]
+    crowd_y_crowd.append(lsTmp)
+
+print_metrics(y=y, crowd_y=crowd_y_crowd)
+
+
+# go back to valid_df with Margarita's annotations.
+# valid_df_orig = valid_df_orig[valid_df_orig['Q'].isin(dfCrowdAnnotations.Q.values)]
+# valid_df = valid_df[valid_df['Context'].isin(dfCrowdAnnotations.Q.values)]
 y_crowd = []
 for q in list(valid_df.Context.values):
     answers = list(dfResults[dfResults['last_turn'] == q]['predicted_answer'])
     train_idxs = [lsTrainAnswers.index(ans) for ans in answers]
     #1st option
-    scores = list(dfResults[dfResults['last_turn'] == q]['avg_answer'])
+    scores = list(dfResults[dfResults['last_turn'] == q]['trusted_avg_answer'])
     lsTmp = [0]*len(lsTrainAnswers)
     for i, v in enumerate(train_idxs):
         lsTmp[v] = scores[i]
     y_crowd.append(lsTmp)
- 
+
 for i in range(3):
     for n in [1, 2, 5, 10, 20]:
         print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y_crowd, valid_df.WOzAnswers.values, n, thr=0)[i]))
@@ -474,65 +527,25 @@ for i in range(3):
 
 print_retrieval_metrics(y_crowd, valid_df_orig, list(train_df.Utterance.values))
 
-# go back to valid_df with Margarita's annotations.    
-# run code here up to valid_df and valid_df_orig definition and subset on questions we have
-valid_df_orig = valid_df_orig[valid_df_orig['Q'].isin(dfCrowdAnnotations.Q.values)]
-valid_df = valid_df[valid_df['Context'].isin(dfCrowdAnnotations.Q.values)]
-y_crowd = []
+
+
+## Margarita annotations as model
+
+y_margarita = []
 for q in list(valid_df.Context.values):
-    answers = list(dfResults[dfResults['last_turn'] == q]['predicted_answer'])
-    train_idxs = [lsTrainAnswers.index(ans) for ans in answers]
-    #1st option
-    scores = list(dfResults[dfResults['last_turn'] == q]['avg_answer'])
+    train_idxs = list(set(valid_df[valid_df['Context'] == q]['WOzAnswers'].values[0]))
+    # Scores for Margarita have max value 6 because they are 6 and are ordered in decreasing value from BA1---BA6
+    scores = list(range(6, 6 - len(train_idxs), -1))
     lsTmp = [0]*len(lsTrainAnswers)
     for i, v in enumerate(train_idxs):
         lsTmp[v] = scores[i]
-    y_crowd.append(lsTmp)
- 
+    y_margarita.append(lsTmp)
+
 for i in range(3):
     for n in [1, 2, 5, 10, 20]:
-        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y_crowd, valid_df.WOzAnswers.values, n, thr=0)[i]))
+        print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y_margarita, valid_df.WOzAnswers.values, n, thr=0)[i]))
 for i in range(3):
     for n in [1, 2, 5, 10, 20]:
-        print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y_crowd, valid_df.WOzAnswers.values, n, thr=0)[i]))
+        print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y_margarita, valid_df.WOzAnswers.values, n, thr=0)[i]))
 
-print_retrieval_metrics(y_crowd, valid_df_orig, list(train_df.Utterance.values))
-
-
-#### for debugging #####    
-
-
-query_recalls, ave_precisions, rec_ranks = [], [], []
-# query = "Hello."
-# retrieval_scores = y[0]
-KBanswers = list(train_df.Utterance.values)
-
-for query, retrieval_scores in zip(list(valid_df_orig.Q.values), y):
-    sorted_retrieval_scores = np.sort(retrieval_scores, axis=0)[::-1]
-    columns_annotations = valid_df_orig.columns[valid_df_orig.columns.get_loc('BA1'):]
-    relevant_documents = [doc for doc in list(valid_df_orig[columns_annotations].loc[valid_df_orig.Q.values==query].values[0]) if doc==doc]
-    if sorted_retrieval_scores[0]==0 or len(relevant_documents)==0:
-        sorted_retrieved_documents = []
-        relevant_documents = []
-        query_recalls.append(0)
-        ave_precisions.append(0)
-        rec_ranks.append(0)
-    else:
-        sorted_id_documents = np.argsort(retrieval_scores, axis=0)[::-1]
-        sorted_id_retreved_documents = sorted_id_documents[sorted_retrieval_scores > 0]
-        sorted_retrieved_documents = [KBanswers[i] for i in sorted_id_retreved_documents]
-        query_recalls.append(len(set(relevant_documents) & set(sorted_retrieved_documents)) / len(set(relevant_documents)))    
-        p_at_ks, rel_at_ks = [], []
-        for k in range(1, 1+len(set(sorted_retrieved_documents))):
-            p_at_ks.append(len(set(relevant_documents) & set(sorted_retrieved_documents[:k])) / k)
-            rel_at_ks.append(1 if sorted_retrieved_documents[k-1] in relevant_documents else 0)
-        ave_precisions.append(sum([p*r for p, r in zip(p_at_ks, rel_at_ks)])/len(set(relevant_documents)))
-    if query_recalls[-1]>0:
-        for r, doc in enumerate(sorted_retrieved_documents):
-            if doc in relevant_documents:
-                rec_ranks.append(1/(1+r)) 
-                break # breaking when first match found --note this uses the First RR, whereas in our case it may be more appropriate to use the TOTAL RR as defined in http://www.lrec-conf.org/proceedings/lrec2002/pdf/301.pdf
-        else:
-            rec_ranks.append(0)
-print("Mean Average Precision (MAP): ", np.mean(ave_precisions))
-print("Mean Reciprocal Rank (MRR): ", np.mean(rec_ranks))
+print_retrieval_metrics(y_margarita, valid_df_orig, list(train_df.Utterance.values))
