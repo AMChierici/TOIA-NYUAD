@@ -25,13 +25,13 @@ def open_json(file_path, file_name):
         return json.load(read_file)
 
 
-model1 = open_json(filePath, 'devTfIdfDialogues.json')
-model2 = open_json(filePath, 'devBm25Dialogues.json')
-model3 = open_json(filePath, 'devBERTbaseuncasedDialogues.json')
-model4 = open_json(filePath, 'devBERTqaRel1to100Dialogues.json')
-model5 = open_json(filePath, 'devBERTqaRel1toAllDialogues.json')
-gold = open_json(filePath, 'devGoldDialogues.json')
-results = open_json(filePath, 'mTurkResults_2turns_all.json')
+model1 = open_json(filePath, 'testTfIdfDialogues.json')
+model2 = open_json(filePath, 'testBm25Dialogues.json')
+model3 = open_json(filePath, 'testBERTbaseuncasedDialogues.json')
+model4 = open_json(filePath, 'testBERTqaRel1to100Dialogues.json')
+model5 = open_json(filePath, 'testBERTqaRel1toAllDialogues.json')
+gold = open_json(filePath, 'testGoldDialogues.json')
+results = open_json(filePath, 'mTurkResults_2turns_all_testset.json')
 
 # Transform to df
 df = pd.DataFrame(gold)
@@ -81,7 +81,7 @@ item['assignment_ids'][answers.index(ans)]
 workers_blacklist = list(np.unique(workers_blacklist))
 assignments_blacklist = list(np.unique(assignments_blacklist))
 # Save assignemtn blacklist for rejecting assignments
-with open(filePath + "assignments_blacklist.csv", "w") as f:
+with open(filePath + "assignments_blacklist_testset.csv", "w") as f:
     writer = csv.writer(f)
     writer.writerow(assignments_blacklist)
 
@@ -147,7 +147,7 @@ for i in names:
     	print('Samples are correlated (reject H0) p=%.3f' % p)
 
 
-dfResults.to_csv('data/dfResultsAll.txt', sep='\t', encoding='utf-8', index=False)
+dfResults.to_csv('data/dfResultsAll_testset.txt', sep='\t', encoding='utf-8', index=False)
 
 worker_ids = []
 for item in results:
@@ -253,9 +253,9 @@ print(
       )
 # I shall check my metrics only on these subsets!
 print(
-      # questions that go well with many answers (check if true)
+      # questions that go well with many answers (actually, that generrate more disagreement - either becasue go well with many answers or )
       set(A) - set(set(A) & set(B)), '\n==============\n',
-      # questions that go well with only a few answers (check if true)
+      # questions that go well with only a few answers (rerunning with set2 = this and adding --and annotation['last_turn'] in set2)-- to the if conditions above when computing the interrannotator agrements, we find out that the agreement that improves the most is the Highest two Ratings (it doubles), meaning that the hyp is sound: questions go well with few answers as there is more agreement in the high ratings. set1 have worst agreement (negative!) on the highest 2 ratings.
       set(B) - set(set(A) & set(B))
       )
 #seems this shows where the model do well or not. Because, the answers raters rated are only the top 10 selections from 5 models, so where there is high disagreement, it means the models produced answers that is hard to agree upon. When there is low agreement, models might do all pretty well. --need to see human ratings by level of agreement, e.g., is it easier to agree on high or low ratings? Or, in other words, do all agree/disagree in correct answers, non correct, or both alike? Moreover, shall we introduce a random top 10 model to study the effect of model selections on disagreemnt?
@@ -269,14 +269,14 @@ print(
       len(set(B))
       )
 print(
-      # answers that go well with many questions (check if true)
+      # answers that go well with many questions (check if true -- yes, same experiment as above confirms)
       set(A) - set(set(A) & set(B)), '\n==============\n',
       # answers that go well with only a few questions (check if true)
       set(B) - set(set(A) & set(B))
       )
 #these are groups of answers that generate more disagreement (A) and less disagreements (B).
 
-dfResults.to_csv('data/dfResults_qualified_nogold.txt',  \
+dfResults.to_csv('data/dfResults_qualified_nogold_testset.txt',  \
                  sep='\t', encoding='utf-8', index=False)
 
 ###use crowd ratings as annotations and and calc Recall@x
@@ -326,7 +326,7 @@ for q in set(dfResults['last_turn']):
 
 dfCrowdAnnotations = pd.DataFrame(dicDf)
 
-dfCrowdAnnotations.to_csv('data/dfCrowdAnnotations_opt1.txt', sep='\t', encoding='utf-8', index=False)
+dfCrowdAnnotations.to_csv('data/dfCrowdAnnotations_opt1_testset.txt', sep='\t', encoding='utf-8', index=False)
 
 
 # borrow test_set_questions_ooctrain function from LREC_code_postreview.py and edit index
@@ -365,7 +365,7 @@ valid_df = transformDialogues(dfCrowdAnnotations, train_df)
 
 #train_df.to_csv('data/crowd_train_df_opt1.txt', sep='\t', encoding='utf-8', index=False)
 
-valid_df.to_csv('data/crowd_valid_df_opt1.txt', sep='\t', encoding='utf-8', index=False)
+valid_df.to_csv('data/crowd_valid_df_opt1_testset.txt', sep='\t', encoding='utf-8', index=False)
 
 
 # other things to check:
