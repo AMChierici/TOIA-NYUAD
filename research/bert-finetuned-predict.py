@@ -43,17 +43,17 @@ class QAmatcher:
         self.model = AutoModelForSequenceClassification.from_pretrained(model_path)
         self.tokenizer = AutoTokenizer.from_pretrained(model_path)
         self.device = torch.device("cuda:" + str(properties.get("gpu_id")) if torch.cuda.is_available() else "cpu")
-        
-    def predict(self, question, answer):       
+
+    def predict(self, question, answer):
         # Add special tokens takes care of adding [CLS], [SEP] tokens
-        inputs = self.tokenizer.encode_plus(question, answer, add_special_tokens=True, return_tensors="pt")       
+        inputs = self.tokenizer.encode_plus(question, answer, add_special_tokens=True, return_tensors="pt")
         self.model.eval()
         with torch.no_grad():
             outputs = self.model(**inputs)
             logits = outputs[0]
         probas = F.softmax(logits[0], dim=0).detach().numpy()
         return probas
-    
+
     def predict_qapairs(self, questions, answers):
         self.model.eval()
         # predictions = []
@@ -65,9 +65,9 @@ class QAmatcher:
             outputs = self.model(**inputs)
             # outputs = self.model(inputs['input_ids'].to(self.device), token_type_ids=inputs['token_type_ids'].to(self.device))
             logits = outputs[0]
-            probas = [F.softmax(logits[k], dim=0).detach().numpy() for k in range(len(logits))]                   
+            probas = [F.softmax(logits[k], dim=0).detach().numpy() for k in range(len(logits))]
         return probas
-    
+
 match = QAmatcher(model_path)
 
 ##
@@ -118,6 +118,23 @@ preds = pd.read_csv('/Users/amc/Documents/glue_data/Margarita_1_All_ratio/valid_
 valid_preds = pd.DataFrame({'q': valid_df['#1 String'].values, 'A': valid_df['#2 String'].values, 'y_pred': preds})
 
 
+def chat(k=1, list_KB=list_KB):
+  query = input("Interrogator: ")
+  # query='how long have you been in the UAE'
+  while query!="stop":
+    predictions = [match.predict(query, A)[1] for A in list_KB]
+    np.argsort(predictions, axis=0)[::-1]
+    if k == 1:
+        KB_index = list(np.argsort(predictions, axis=0)[::-1])[0]
+        print("\nAvatar:", list_KB[KB_index])
+    else:
+        KB_index = list(np.argsort(predictions, axis=0)[::-1])[:k]
+        print("\nAvatar:", [list_KB[i] for i in KB_index])
+    query = input("Interrogator: ")
+
+chat()
+
+
 
 #---
 train_corpus = list(np.unique(train_df.Context.values))
@@ -131,7 +148,7 @@ for q in valid_df['Q'].values:
     mask = valid_preds['q'] == q
     relevant = valid_preds['y_pred'] == 1
     subsetkb = train_df['Utterance'].isin(valid_preds[mask&relevant]['A'])
-    
+
     # q-q search
     step1_corpus = train_df[subsetkb].Context.tolist()
     if not step1_corpus:
@@ -139,28 +156,28 @@ for q in valid_df['Q'].values:
         tokenized_corpus = [doc.split(" ") for doc in step1_corpus]
         bm25_step2 = BM25Okapi(tokenized_corpus)
         step2_rankings = bm25.get_scores(q.split(" "))
-        y.append(step2_rankings)  
+        y.append(step2_rankings)
     else:
         tokenized_corpus = [doc.split(" ") for doc in step1_corpus]
         bm25_step2 = BM25Okapi(tokenized_corpus)
         step2_rankings = bm25.get_scores(q.split(" "))
-    
+
         ids = [list(train_corpus).index(q) for q in step1_corpus]
         y_rankings = []
         for i in range(len(train_corpus)):
             if i in ids:
                 y_rankings.append(step2_rankings[ids.index(i)])
             else:
-                y_rankings.append(0)        
-        y.append(y_rankings)  
-        
-        
+                y_rankings.append(0)
+        y.append(y_rankings)
+
+
 yhat = []
 for q in valid_df['Q'].values:
     mask = valid_preds['q'] == q
     relevant = valid_preds['y_pred'] > .5
     subsetkb = train_df['Utterance'].isin(valid_preds[mask&relevant]['A'])
-    
+
     # q-q search
     step1_corpus = train_df[subsetkb].Context.tolist()
     if not step1_corpus:
@@ -172,12 +189,11 @@ for q in valid_df['Q'].values:
             if i in ids:
                 y_rankings.append(r)
             else:
-                y_rankings.append(0)        
-        yhat.append(y_rankings) 
-    
+                y_rankings.append(0)
+        yhat.append(y_rankings)
 
 
 
 
 
-    
+
