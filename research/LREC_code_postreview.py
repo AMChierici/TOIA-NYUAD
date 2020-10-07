@@ -143,7 +143,7 @@ def evaluate_recall_thr(y, y_test, k=10, thr=0.7):
         # labels = y_test[16]
         predictions = np.argsort(scores, axis=0)[::-1] #added when scores are numbers and not predicted labels
         sorted_scores = np.sort(scores, axis=0)[::-1] #added when scores are numbers and not predicted labels
-        above_thr_selections = [item for item, value in zip(predictions[:k], sorted_scores[:k]) if value>thr]
+        above_thr_selections = [item for item, value in zip(predictions[:k], sorted_scores[:k]) if value > thr]
         A, B = set(labels), set(above_thr_selections)
         num_examples += len(A) #num of examples is num of (q, annotated a) pairs. + 1 if no annotated ans exists.
         intersection = A & B
@@ -167,7 +167,7 @@ def evaluate_recall_thr_star(y, y_test, k=10, thr=0.7):
     for scores, labels in zip(y, y_test):
         predictions = np.argsort(scores, axis=0)[::-1] #added when scores are numbers and not predicted labels
         sorted_scores = np.sort(scores, axis=0)[::-1] #added when scores are numbers and not predicted labels
-        above_thr_selections = [item for item, value in zip(predictions[:k], sorted_scores[:k]) if value>thr]
+        above_thr_selections = [item for item, value in zip(predictions[:k], sorted_scores[:k]) if value > thr]
         A, B = set(labels), set(above_thr_selections)
         intersection = A & B
         if len(intersection)>0:
@@ -321,13 +321,32 @@ def outputPred(y, y_test, lsTraincorpus, txtFilepath, intK, lsQuestions):
 valid_df_orig = multiturndialogues.loc[multiturndialogues.Experiment.isin(["TRAIN"])]# & multiturndialogues.Mode.isin(["PER"])]
 valid_df_orig.reset_index(level=None, drop=True, inplace=True)
 valid_df = test_set_questions_ooctrain(valid_df_orig, train_df)
+crowd_valid_df_orig = pd.read_csv('data/dfCrowdAnnotations_opt1.txt', sep='\t', encoding='utf-8')
+crowd_valid_df = transformDialogues(crowd_valid_df_orig, train_df)
+# Uncomment for joint crowd and margarita annotations
+combo_valid_df_orig = crowd_valid_df_orig.merge(valid_df_orig, on = 'Q')
+# Rename BA1 as this is used in one function
+combo_valid_df_orig = combo_valid_df_orig.rename(columns={'BA1_x': 'BA1'})
+# and reorder columns with BA's in the end
+cols = [col for col in valid_df_orig.columns.tolist() if not(col.startswith('BA'))]
+b = [col for col in combo_valid_df_orig.columns.tolist() if col.startswith('BA')]
+cols.extend(b)
+# Merge and merge lists of wizard answers
+combo_valid_df_orig = combo_valid_df_orig[cols]
+combo_valid_df = crowd_valid_df.merge(valid_df, on = 'Context')
+for row in range(combo_valid_df.shape[0]):
+    combo_valid_df.loc[row, 'WOzAnswers_x'].extend(
+        combo_valid_df.loc[row, 'WOzAnswers_y'])
+combo_valid_df = combo_valid_df.rename(columns={'WOzAnswers_x': 'WOzAnswers'})
+combo_valid_df = combo_valid_df.drop(columns='WOzAnswers_y')
 
 test_df_orig = multiturndialogues.loc[multiturndialogues.Experiment.isin(["TEST"])]# & multiturndialogues.Mode.isin(["PER"])]
 test_df_orig.reset_index(level=None, drop=True, inplace=True)
 test_df = test_set_questions_ooctrain(test_df_orig, train_df)
+crowd_test_df_orig = pd.read_csv('data/dfCrowdAnnotations_opt1_testset.txt', sep='\t', encoding='utf-8')
+crowd_test_df = transformDialogues(crowd_test_df_orig, train_df)
+# Uncomment for joint crowd and margarita annotations
 
-crowd_valid_df_orig = pd.read_csv('data/dfCrowdAnnotations_opt1.txt', sep='\t', encoding='utf-8')
-crowd_valid_df = transformDialogues(crowd_valid_df_orig, train_df)
 
 merge_valid_df = crowd_valid_df.merge(valid_df, on='Context')
 tmp = []
@@ -343,25 +362,13 @@ pred = TFIDFPredictor()
 train_corpus = train_df.Context.values
 pred.train(train_corpus)
 
-y_tfidf = [pred.predict(valid_df.Context[x], list(train_corpus)) for x in range(len(valid_df))]
+y_tfidf = [pred.predict(combo_valid_df.Context[x], list(train_corpus)) for x in range(len(combo_valid_df))]
 #saveJsonDialogues(filepath='data/devGoldDialogues.json', ga=True)
 #saveJsonDialogues('data/devTfIdfDialogues.json')
 
 crowd_y_tfidf = [pred.predict(crowd_valid_df.Context[x], list(train_corpus)) for x in range(len(crowd_valid_df))]
 
-# Produce results for test dialogues
-y = [pred.predict(test_df.Context[x], list(train_corpus)) for x in range(len(test_df))]
-saveJsonDialogues(filepath='data/testGoldDialogues.json', ga=True, splitset="TEST")
-saveJsonDialogues('data/testTfIdfDialogues.json', splitset="TEST")
-for i in range(3):
-        for n in [1, 2, 5, 10, 50]:
-            print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, test_df.WOzAnswers.values, n, thr=0)[i]))
-for i in range(3):
-        for n in [1, 2, 5, 10, 50]:
-            print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y, test_df.WOzAnswers.values, n, thr=0)[i]))
-#
-
-def print_metrics(y, crowd_y):
+def print_metrics(y, crowd_y, valid_df, crowd_valid_df, valid_df_orig, crowd_valid_df_orig):
     for i in range(3):
         for n in [1, 2, 5, 10, 20]:
             print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
@@ -378,10 +385,17 @@ def print_metrics(y, crowd_y):
     print_retrieval_metrics(crowd_y, crowd_valid_df_orig, list(train_df.Utterance.values))
 
 
-print_metrics(y=y_tfidf, crowd_y=crowd_y_tfidf)
+print_metrics(y=y_tfidf, crowd_y=crowd_y_tfidf, valid_df=combo_valid_df, crowd_valid_df=crowd_valid_df, valid_df_orig=combo_valid_df_orig, crowd_valid_df_orig=crowd_valid_df_orig)
 # Need to put one more requirements in the function above to run the line below
 # print_metrics(y=y_tfidf, crowd_y=crowd_y_tfidf, valid_df=merge_valid_df)
 
+# Produce results for test dialogues
+y_tfidf_test = [pred.predict(test_df.Context[x], list(train_corpus)) for x in range(len(test_df))]
+# saveJsonDialogues(filepath='data/testGoldDialogues.json', ga=True, splitset="TEST")
+# saveJsonDialogues('data/testTfIdfDialogues.json', splitset="TEST")
+crowd_y_tfidf_test = [pred.predict(crowd_test_df.Context[x], list(train_corpus)) for x in range(len(crowd_test_df))]
+print_metrics(y=y_tfidf_test, crowd_y=crowd_y_tfidf_test, valid_df=test_df, crowd_valid_df=crowd_test_df, valid_df_orig=test_df_orig, crowd_valid_df_orig=crowd_test_df_orig)
+#
 
 
 ###### BM25 ######
@@ -393,17 +407,13 @@ y_bm25 = [bm25.get_scores(valid_df.Context[x].split(" ")) for x in range(len(val
 # saveJsonDialogues('data/devBm25Dialogues.json')
 
 crowd_y_bm25 = [bm25.get_scores(crowd_valid_df.Context[x].split(" ")) for x in range(len(crowd_valid_df))]
-print_metrics(y=y_bm25, crowd_y=crowd_y_bm25)
+print_metrics(y=y_bm25, crowd_y=crowd_y_bm25, valid_df=valid_df, crowd_valid_df=crowd_valid_df, valid_df_orig=valid_df_orig, crowd_valid_df_orig=crowd_valid_df_orig)
 
 # Produce results for test dialogues
-y = [bm25.get_scores(test_df.Context[x].split(" ")) for x in range(len(test_df))]
-saveJsonDialogues('data/testBm25Dialogues.json', splitset="TEST")
-for i in range(3):
-        for n in [1, 2, 5, 10, 50]:
-            print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, test_df.WOzAnswers.values, n, thr=0)[i]))
-for i in range(3):
-        for n in [1, 2, 5, 10, 50]:
-            print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y, test_df.WOzAnswers.values, n, thr=0)[i]))
+y_bm25_test = [bm25.get_scores(test_df.Context[x].split(" ")) for x in range(len(test_df))]
+# saveJsonDialogues('data/testBm25Dialogues.json', splitset="TEST")
+crowd_y_bm25_test = [bm25.get_scores(crowd_test_df.Context[x].split(" ")) for x in range(len(crowd_test_df))]
+print_metrics(y=y_bm25_test, crowd_y=crowd_y_bm25_test, valid_df=test_df, crowd_valid_df=crowd_test_df, valid_df_orig=test_df_orig, crowd_valid_df_orig=crowd_test_df_orig)
 #
 
 
@@ -433,25 +443,25 @@ y_bert = [LMPredictor_new(valid_embeddings[x], train_embeddings) for x in range(
 # saveJsonDialogues('data/devBERTbaseuncasedDialogues.json')
 
 crowd_y_bert = [LMPredictor_new(crowd_valid_embeddings[x], train_embeddings) for x in range(len(crowd_valid_embeddings))]
-print_metrics(y=y_bert, crowd_y=crowd_y_bert)
+print_metrics(y=y_bert, crowd_y=crowd_y_bert, valid_df=valid_df, crowd_valid_df=crowd_valid_df, valid_df_orig=valid_df_orig, crowd_valid_df_orig=crowd_valid_df_orig)
 
 y_tfidf_bert = [list(np.array(tfidf) + np.array(bert)) for tfidf, bert in zip(y_tfidf, y_bert)]
 crowd_y_tfidf_bert = [list(np.array(tfidf) + np.array(bert)) for tfidf, bert in zip(crowd_y_tfidf, crowd_y_bert)]
-print_metrics(y=y_tfidf_bert, crowd_y=crowd_y_tfidf_bert)
+print_metrics(y=y_tfidf_bert, crowd_y=crowd_y_tfidf_bert, valid_df=valid_df, crowd_valid_df=crowd_valid_df, valid_df_orig=valid_df_orig, crowd_valid_df_orig=crowd_valid_df_orig)
 
 # results for test dialogues
 test_embeddings = []
 for text in test_df.Context.values:
     test_embeddings.append(bertembed(text)[0])
 test_embeddings = np.array(test_embeddings)
-y = [LMPredictor_new(test_embeddings[x], train_embeddings) for x in range(len(test_embeddings))]
-saveJsonDialogues('data/testBERTbaseuncasedDialogues.json', splitset="TEST")
-for i in range(3):
-        for n in [1, 2, 5, 10, 50]:
-            print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, test_df.WOzAnswers.values, n, thr=0)[i]))
-for i in range(3):
-        for n in [1, 2, 5, 10, 50]:
-            print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y, test_df.WOzAnswers.values, n, thr=0)[i]))
+crowd_test_embeddings = []
+for text in crowd_test_df.Context.values:
+    crowd_test_embeddings.append(bertembed(text)[0])
+crowd_test_embeddings = np.array(crowd_test_embeddings)
+y_bert_test = [LMPredictor_new(test_embeddings[x], train_embeddings) for x in range(len(test_embeddings))]
+crowd_y_bert_test = [LMPredictor_new(crowd_test_embeddings[x], train_embeddings) for x in range(len(crowd_test_embeddings))]
+# saveJsonDialogues('data/testBERTbaseuncasedDialogues.json', splitset="TEST")
+print_metrics(y=y_bert_test, crowd_y=crowd_y_bert_test, valid_df=test_df, crowd_valid_df=crowd_test_df, valid_df_orig=test_df_orig, crowd_valid_df_orig=crowd_test_df_orig)
 #
 
 
@@ -488,32 +498,35 @@ print_metrics(y=y_qabert, crowd_y=crowd_y_qabert)
 
 y_tfidf_qabert = [list(np.array(tfidf) + np.array(bert)) for tfidf, bert in zip(y_tfidf, y_qabert)]
 crowd_y_tfidf_qabert = [list(np.array(tfidf) + np.array(bert)) for tfidf, bert in zip(crowd_y_tfidf, crowd_y_qabert)]
-print_metrics(y=y_tfidf_qabert, crowd_y=crowd_y_tfidf_qabert)
+print_metrics(y=y_tfidf_qabert, crowd_y=crowd_y_tfidf_qabert, valid_df=valid_df, crowd_valid_df=crowd_valid_df, valid_df_orig=valid_df_orig, crowd_valid_df_orig=crowd_valid_df_orig)
 
 y_bert_qabert = [list(np.array(bert) + np.array(qabert)) for bert, qabert in zip(y_bert, y_qabert)]
 crowd_y_bert_qabert = [list(np.array(bert) + np.array(qabert)) for bert, qabert in zip(crowd_y_bert, crowd_y_qabert)]
-print_metrics(y=y_bert_qabert, crowd_y=crowd_y_bert_qabert)
+print_metrics(y=y_bert_qabert, crowd_y=crowd_y_bert_qabert, valid_df=valid_df, crowd_valid_df=crowd_valid_df, valid_df_orig=valid_df_orig, crowd_valid_df_orig=crowd_valid_df_orig)
 
 
 # Test Dialogues
 preds = pd.read_csv('/Users/amc/Documents/glue_data/Margarita_1_100_ratio/test_results_mrpc.txt', sep='\t', encoding='utf-8')['prediction'].values
 test_df2test_preds = pd.read_csv('data/test_dev2test_preds.tsv', sep='\t', encoding='utf-8')
 test_preds = pd.DataFrame({'q': test_df2test_preds['#1 String'].values, 'A': test_df2test_preds['#2 String'].values, 'y_pred': preds})
-y = []
+y_qabert_test = []
 for i in range(len(test_df_orig)):
     ranks=[]
     for j in train_corpus:
         answers = train_df[train_df['Context']==j]['Utterance'].values[0]
         rank = test_preds[(test_preds['A']==answers) & (test_preds['q']==test_df_orig.loc[i, 'Q'])]['y_pred'].values[0]
         ranks.append(rank)
-    y.append(ranks)
-saveJsonDialogues('data/testBERTqaRel1to100Dialogues.json', splitset="TEST")
-for i in range(3):
-        for n in [1, 2, 5, 10, 20]:
-            print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, test_df.WOzAnswers.values, n, thr=0)[i]))
-for i in range(3):
-        for n in [1, 2, 5, 10, 20]:
-            print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y, test_df.WOzAnswers.values, n, thr=0)[i]))
+    y_qabert_test.append(ranks)
+# saveJsonDialogues('data/testBERTqaRel1to100Dialogues.json', splitset="TEST")
+crowd_y_qabert_test = []
+for i in range(len(crowd_test_df_orig)):
+    ranks=[]
+    for j in train_corpus:
+        answers = train_df[train_df['Context']==j]['Utterance'].values[0]
+        rank = test_preds[(test_preds['A']==answers) & (test_preds['q']==crowd_test_df_orig.loc[i, 'Q'])]['y_pred'].values[0]      #change 'Q' to 'Context' when running for Crowd annotations
+        ranks.append(rank)
+    crowd_y_qabert_test.append(ranks)
+print_metrics(y=y_qabert_test, crowd_y=crowd_y_qabert_test, valid_df=test_df, crowd_valid_df=crowd_test_df, valid_df_orig=test_df_orig, crowd_valid_df_orig=crowd_test_df_orig)
 #
 
 
@@ -541,23 +554,27 @@ print_metrics(y=y_qabertAll, crowd_y=crowd_y_qabertAll)
 
 # Test Dialogues
 preds = pd.read_csv('/Users/amc/Documents/glue_data/Margarita_1_All_ratio/test_results_mrpc.txt', sep='\t', encoding='utf-8')['prediction'].values
-y = []
+test_preds = pd.DataFrame({'q': test_df2test_preds['#1 String'].values, 'A': test_df2test_preds['#2 String'].values, 'y_pred': preds})
+y_qabertAll_test = []
 for i in range(len(test_df_orig)):
     ranks=[]
     for j in train_corpus:
         answers = train_df[train_df['Context']==j]['Utterance'].values[0]
         rank = test_preds[(test_preds['A']==answers) & (test_preds['q']==test_df_orig.loc[i, 'Q'])]['y_pred'].values[0]
         ranks.append(rank)
-    y.append(ranks)
-saveJsonDialogues('data/testBERTqaRel1toAllDialogues.json', splitset="TEST")
-for i in range(3):
-        for n in [1, 2, 5, 10, 20]:
-            print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, test_df.WOzAnswers.values, n, thr=0)[i]))
-for i in range(3):
-        for n in [1, 2, 5, 10, 20]:
-            print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y, test_df.WOzAnswers.values, n, thr=0)[i]))
-y_bert_wabert_All = y.copy()
+    y_qabertAll_test.append(ranks)
+# saveJsonDialogues('data/testBERTqaRel1toAllDialogues.json', splitset="TEST")
+crowd_y_qabertAll_test = []
+for i in range(len(crowd_test_df_orig)):
+    ranks=[]
+    for j in train_corpus:
+        answers = train_df[train_df['Context']==j]['Utterance'].values[0]
+        rank = test_preds[(test_preds['A']==answers) & (test_preds['q']==crowd_test_df_orig.loc[i, 'Q'])]['y_pred'].values[0]      #change 'Q' to 'Context' when running for Crowd annotations
+        ranks.append(rank)
+    crowd_y_qabertAll_test.append(ranks)
+print_metrics(y=y_qabertAll_test, crowd_y=crowd_y_qabertAll_test, valid_df=test_df, crowd_valid_df=crowd_test_df, valid_df_orig=test_df_orig, crowd_valid_df_orig=crowd_test_df_orig)
 #
+
 
 
 ######### RANDOM ########
