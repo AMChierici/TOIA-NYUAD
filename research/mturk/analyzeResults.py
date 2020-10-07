@@ -25,13 +25,13 @@ def open_json(file_path, file_name):
         return json.load(read_file)
 
 
-model1 = open_json(filePath, 'testTfIdfDialogues.json')
-model2 = open_json(filePath, 'testBm25Dialogues.json')
-model3 = open_json(filePath, 'testBERTbaseuncasedDialogues.json')
-model4 = open_json(filePath, 'testBERTqaRel1to100Dialogues.json')
-model5 = open_json(filePath, 'testBERTqaRel1toAllDialogues.json')
-gold = open_json(filePath, 'testGoldDialogues.json')
-results = open_json(filePath, 'mTurkResults_2turns_all_testset.json')
+model1 = open_json(filePath, 'devTfIdfDialogues.json')
+model2 = open_json(filePath, 'devBm25Dialogues.json')
+model3 = open_json(filePath, 'devBERTbaseuncasedDialogues.json')
+model4 = open_json(filePath, 'devBERTqaRel1to100Dialogues.json')
+model5 = open_json(filePath, 'devBERTqaRel1toAllDialogues.json')
+gold = open_json(filePath, 'devGoldDialogues.json')
+results = open_json(filePath, 'mTurkResults_2turns_all.json')
 
 # Transform to df
 df = pd.DataFrame(gold)
@@ -81,7 +81,7 @@ item['assignment_ids'][answers.index(ans)]
 workers_blacklist = list(np.unique(workers_blacklist))
 assignments_blacklist = list(np.unique(assignments_blacklist))
 # Save assignemtn blacklist for rejecting assignments
-with open(filePath + "assignments_blacklist_testset.csv", "w") as f:
+with open(filePath + "assignments_blacklist.csv", "w") as f:
     writer = csv.writer(f)
     writer.writerow(assignments_blacklist)
 
@@ -147,7 +147,7 @@ for i in names:
     	print('Samples are correlated (reject H0) p=%.3f' % p)
 
 
-dfResults.to_csv('data/dfResultsAll_testset.txt', sep='\t', encoding='utf-8', index=False)
+dfResults.to_csv('data/dfResultsAll.txt', sep='\t', encoding='utf-8', index=False)
 
 worker_ids = []
 for item in results:
@@ -222,8 +222,18 @@ print('Weighted Kappa (Cohen, 1968) \n ------------------------- \n \
 
 ### FOR WHICH QUESTIONS THERE IS LESS AGREEABLENESS? CoV by Q, check what they are, then calc. corr for cov high and small ###
 
+
+# Print reduction of data set by removing blacklist
+numerator = 0
+denominator = 0
+for item in results:
+    numerator += len(set(item['worker_ids']) & set(workers_blacklist))
+    denominator += len(item['worker_ids'])
+numerator/denominator
+
 #From here onward, exclude blacklist workers and gold answers. ### DOUBLE CHECK blacklsit WAS CORRECT EARLIER. IT SEEMS NOT ###
 
+# Note that here we remove only rows where all workers are blacklisted.
 dfResults = dfResults[(~dfResults['all_blacklisted']) & (dfResults['isGold'] == 0)]
 # And replace answers with trusted answers
 dfResults['answers'] = dfResults['trusted_answers']
@@ -238,7 +248,7 @@ def CoV(x):
     return res
 
 dfResults['lsCovs'] = [CoV(x) for x in dfResults['answers']]
-print(dfResults.describe())
+print(dfResults['lsCovs'].describe())
 
 upThr = .50
 loThr = .25
@@ -276,7 +286,7 @@ print(
       )
 #these are groups of answers that generate more disagreement (A) and less disagreements (B).
 
-dfResults.to_csv('data/dfResults_qualified_nogold_testset.txt',  \
+dfResults.to_csv('data/dfResults_qualified_nogold.txt',  \
                  sep='\t', encoding='utf-8', index=False)
 
 ###use crowd ratings as annotations and and calc Recall@x
@@ -326,7 +336,7 @@ for q in set(dfResults['last_turn']):
 
 dfCrowdAnnotations = pd.DataFrame(dicDf)
 
-dfCrowdAnnotations.to_csv('data/dfCrowdAnnotations_opt1_testset.txt', sep='\t', encoding='utf-8', index=False)
+dfCrowdAnnotations.to_csv('data/dfCrowdAnnotations_opt1.txt', sep='\t', encoding='utf-8', index=False)
 
 
 # borrow test_set_questions_ooctrain function from LREC_code_postreview.py and edit index
@@ -365,7 +375,7 @@ valid_df = transformDialogues(dfCrowdAnnotations, train_df)
 
 #train_df.to_csv('data/crowd_train_df_opt1.txt', sep='\t', encoding='utf-8', index=False)
 
-valid_df.to_csv('data/crowd_valid_df_opt1_testset.txt', sep='\t', encoding='utf-8', index=False)
+valid_df.to_csv('data/crowd_valid_df_opt1.txt', sep='\t', encoding='utf-8', index=False)
 
 
 # other things to check:
