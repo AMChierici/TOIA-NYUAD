@@ -4,8 +4,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.feature_extraction.text import TfidfTransformer
 import collections
 import nltk
-from nltk.stem.snowball import SnowballStemmer
-from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
 import re
 from itertools import compress
 import torch
@@ -16,7 +15,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier,GradientBoostingClassifier
 # Load model
 nltk.download('stopwords')
-ps = SnowballStemmer('english')
+ps = WordNetLemmatizer()
 warnings.filterwarnings('ignore')
 import math
 # !pip install brewer2mpl
@@ -30,7 +29,6 @@ import torch
 from pytorch_pretrained_bert import BertTokenizer, BertModel, BertForMaskedLM
 from sklearn.metrics.pairwise import cosine_similarity
 import sys
-from rank_bm25 import BM25Okapi
 import random as rd
 
 
@@ -121,7 +119,7 @@ def preprocess(text):
             text = re.sub('[^a-zA-Z]', ' ', text)
             text = text.lower()
             text = text.split()
-            text = [ps.stem(word) for word in text if not word in set(stopwords.words('english'))]
+            text = [ps.lemmatize(word) for word in text if not word in set(stopwords.words('english'))]
             return ' '.join(text)
 
 def allnull(somelist):
@@ -317,8 +315,8 @@ def outputPred(y, y_test, lsTraincorpus, txtFilepath, intK, lsQuestions):
 
 #-- EOfn --#  ###NOTE: need to add to the dialogues TRAIN the wizard answers
 
-
-valid_df_orig = multiturndialogues.loc[multiturndialogues.Experiment.isin(["TRAIN"])]# & multiturndialogues.Mode.isin(["PER"])]
+# Focus only on PER mode
+valid_df_orig = multiturndialogues.loc[multiturndialogues.Experiment.isin(["TRAIN"]) & multiturndialogues.Mode.isin(["PER"])]
 valid_df_orig.reset_index(level=None, drop=True, inplace=True)
 valid_df = test_set_questions_ooctrain(valid_df_orig, train_df)
 crowd_valid_df_orig = pd.read_csv('data/dfCrowdAnnotations_opt1.txt', sep='\t', encoding='utf-8')
@@ -340,7 +338,7 @@ for row in range(combo_valid_df.shape[0]):
 combo_valid_df = combo_valid_df.rename(columns={'WOzAnswers_x': 'WOzAnswers'})
 combo_valid_df = combo_valid_df.drop(columns='WOzAnswers_y')
 
-test_df_orig = multiturndialogues.loc[multiturndialogues.Experiment.isin(["TEST"])]# & multiturndialogues.Mode.isin(["PER"])]
+test_df_orig = multiturndialogues.loc[multiturndialogues.Experiment.isin(["TEST"]) & multiturndialogues.Mode.isin(["PER"])]
 test_df_orig.reset_index(level=None, drop=True, inplace=True)
 test_df = test_set_questions_ooctrain(test_df_orig, train_df)
 crowd_test_df_orig = pd.read_csv('data/dfCrowdAnnotations_opt1_testset.txt', sep='\t', encoding='utf-8')
@@ -359,14 +357,14 @@ merge_valid_df['WOzAnswers'] = pd.Series(tmp)
 
 ####### TFIDF ######
 pred = TFIDFPredictor()
-train_corpus = train_df.Context.values
+train_corpus = [preprocess(question) for question in train_df.Context.values]
 pred.train(train_corpus)
 
-y_tfidf = [pred.predict(combo_valid_df.Context[x], list(train_corpus)) for x in range(len(combo_valid_df))]
+y_tfidf = [pred.predict(preprocess(combo_valid_df.Context[x]), list(train_corpus)) for x in range(len(combo_valid_df))]
 #saveJsonDialogues(filepath='data/devGoldDialogues.json', ga=True)
 #saveJsonDialogues('data/devTfIdfDialogues.json')
 
-crowd_y_tfidf = [pred.predict(crowd_valid_df.Context[x], list(train_corpus)) for x in range(len(crowd_valid_df))]
+crowd_y_tfidf = [pred.predict(preprocess(crowd_valid_df.Context[x]), list(train_corpus)) for x in range(len(crowd_valid_df))]
 
 def print_metrics(y, crowd_y, valid_df, crowd_valid_df, valid_df_orig, crowd_valid_df_orig):
     for i in range(3):
@@ -395,25 +393,6 @@ y_tfidf_test = [pred.predict(test_df.Context[x], list(train_corpus)) for x in ra
 # saveJsonDialogues('data/testTfIdfDialogues.json', splitset="TEST")
 crowd_y_tfidf_test = [pred.predict(crowd_test_df.Context[x], list(train_corpus)) for x in range(len(crowd_test_df))]
 print_metrics(y=y_tfidf_test, crowd_y=crowd_y_tfidf_test, valid_df=test_df, crowd_valid_df=crowd_test_df, valid_df_orig=test_df_orig, crowd_valid_df_orig=crowd_test_df_orig)
-#
-
-
-###### BM25 ######
-# Train BM25 predictor q-q relevance
-tokenized_corpus = [doc.split(" ") for doc in train_corpus]
-bm25 = BM25Okapi(tokenized_corpus)
-
-y_bm25 = [bm25.get_scores(valid_df.Context[x].split(" ")) for x in range(len(valid_df))]
-# saveJsonDialogues('data/devBm25Dialogues.json')
-
-crowd_y_bm25 = [bm25.get_scores(crowd_valid_df.Context[x].split(" ")) for x in range(len(crowd_valid_df))]
-print_metrics(y=y_bm25, crowd_y=crowd_y_bm25, valid_df=valid_df, crowd_valid_df=crowd_valid_df, valid_df_orig=valid_df_orig, crowd_valid_df_orig=crowd_valid_df_orig)
-
-# Produce results for test dialogues
-y_bm25_test = [bm25.get_scores(test_df.Context[x].split(" ")) for x in range(len(test_df))]
-# saveJsonDialogues('data/testBm25Dialogues.json', splitset="TEST")
-crowd_y_bm25_test = [bm25.get_scores(crowd_test_df.Context[x].split(" ")) for x in range(len(crowd_test_df))]
-print_metrics(y=y_bm25_test, crowd_y=crowd_y_bm25_test, valid_df=test_df, crowd_valid_df=crowd_test_df, valid_df_orig=test_df_orig, crowd_valid_df_orig=crowd_test_df_orig)
 #
 
 
