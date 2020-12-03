@@ -175,6 +175,29 @@ def evaluate_recall_thr_star(y, y_test, k=10, thr=0.7):
             num_correct_nonans += 1
     return (num_correct_ans+num_correct_nonans)/num_examples, num_correct_ans, num_correct_nonans
 
+def evaluate_recall_10_thr(y, y_test, k=10, thr=0.7):
+    # modifying this to allow fine-tuning the threshold and counting empty answers
+    # y_margarita, valid_df.WOzAnswers.values
+    num_examples = 0
+    num_correct_ans = 0
+    for scores, labels in zip(y, y_test):
+        #scores = y_tfidf[0]
+        #labels = valid_df.WOzAnswers.values[0]
+        df_score_label = pd.DataFrame({"scores": scores})
+        df_score_label['labels'] = df_score_label.index + 1
+        df_distractors = df_score_label[~df_score_label['labels'].isin(list(set(labels)))].sample(n=10) #random_state=1
+        df_label = df_score_label[df_score_label['labels'].isin(list(set(labels)))]
+        df_distractors_label = pd.concat([df_distractors, df_label])
+        df_distractors_label.sort_values('scores', ascending=False, inplace=True)
+        predictions = df_distractors_label['labels'].values
+        sorted_scores = df_distractors_label['scores'].values
+        above_thr_selections = [item for item, value in zip(predictions[:k], sorted_scores[:k]) if value >= thr]
+        A, B = set(labels), set(above_thr_selections)
+        num_examples += len(A) #num of examples is num of (q, annotated a) pairs. + 1 if no annotated ans exists.
+        intersection = A & B
+        num_correct_ans += len(intersection)
+    return num_correct_ans/num_examples
+
 def print_retrieval_metrics(y, valid_df_orig, KBanswers):
     query_precisions, query_recalls, ave_precisions, rec_ranks = [], [], [], []
     for query, retrieval_scores in zip(list(valid_df_orig.Q.values), y):
@@ -357,14 +380,26 @@ merge_valid_df['WOzAnswers'] = pd.Series(tmp)
 
 ####### TFIDF ######
 pred = TFIDFPredictor()
-train_corpus = [preprocess(question) for question in train_df.Context.values]
+train_corpus = train_df.Context.values.tolist()
 pred.train(train_corpus)
 
-y_tfidf = [pred.predict(preprocess(combo_valid_df.Context[x]), list(train_corpus)) for x in range(len(combo_valid_df))]
+
+y_tfidf = [pred.predict(valid_df.Context[x], train_corpus) for x in range(len(valid_df))]
 #saveJsonDialogues(filepath='data/devGoldDialogues.json', ga=True)
 #saveJsonDialogues('data/devTfIdfDialogues.json')
+for i in range(3):
+    for n in [1, 2, 5, 10, 20]:
+        print("SR@{}: {:g}".format(n, evaluate_recall_thr_star(y_tfidf, valid_df.WOzAnswers.values, n, thr=0)[i]))
 
-crowd_y_tfidf = [pred.predict(preprocess(crowd_valid_df.Context[x]), list(train_corpus)) for x in range(len(crowd_valid_df))]
+for k in [1, 2, 5, 10, 14]:
+    print("R_10@{}: {:g}".format(n, evaluate_recall_10_thr(y_tfidf, valid_df.WOzAnswers.values, k, thr=0)))
+
+recall_10_at_1 = []
+for i in range(1, 100):
+    recall_10_at_1.append(evaluate_recall_10_thr(y_tfidf, valid_df.WOzAnswers.values, 1, thr=0))
+pd.Series(recall_10_at_1).describe()
+
+crowd_y_tfidf = [pred.predict(crowd_valid_df.Context[x], train_corpus) for x in range(len(crowd_valid_df))]
 
 def print_metrics(y, crowd_y, valid_df, crowd_valid_df, valid_df_orig, crowd_valid_df_orig):
     for i in range(3):
@@ -372,18 +407,18 @@ def print_metrics(y, crowd_y, valid_df, crowd_valid_df, valid_df_orig, crowd_val
             print("Recall@{}: {:g}".format(n, evaluate_recall_thr(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
     for i in range(3):
         for n in [1, 2, 5, 10, 20]:
-            print("Recall@{}: {:g}".format(n, evaluate_recall_thr(crowd_y, crowd_valid_df.WOzAnswers.values, n, thr=0)[i]))
+            print("crowd_Recall@{}: {:g}".format(n, evaluate_recall_thr(crowd_y, crowd_valid_df.WOzAnswers.values, n, thr=0)[i]))
     for i in range(3):
         for n in [1, 2, 5, 10, 20]:
-            print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
+            print("SR@{}: {:g}".format(n, evaluate_recall_thr_star(y, valid_df.WOzAnswers.values, n, thr=0)[i]))
     for i in range(3):
         for n in [1, 2, 5, 10, 20]:
-            print("Recall@{}: {:g}".format(n, evaluate_recall_thr_star(crowd_y, crowd_valid_df.WOzAnswers.values, n, thr=0)[i]))
+            print("crowd_SR@{}: {:g}".format(n, evaluate_recall_thr_star(crowd_y, crowd_valid_df.WOzAnswers.values, n, thr=0)[i]))
     print_retrieval_metrics(y, valid_df_orig, list(train_df.Utterance.values))
     print_retrieval_metrics(crowd_y, crowd_valid_df_orig, list(train_df.Utterance.values))
 
 
-print_metrics(y=y_tfidf, crowd_y=crowd_y_tfidf, valid_df=combo_valid_df, crowd_valid_df=crowd_valid_df, valid_df_orig=combo_valid_df_orig, crowd_valid_df_orig=crowd_valid_df_orig)
+print_metrics(y=y_tfidf, crowd_y=crowd_y_tfidf, valid_df=valid_df, crowd_valid_df=crowd_valid_df, valid_df_orig=valid_df_orig, crowd_valid_df_orig=crowd_valid_df_orig)
 # Need to put one more requirements in the function above to run the line below
 # print_metrics(y=y_tfidf, crowd_y=crowd_y_tfidf, valid_df=merge_valid_df)
 
@@ -422,9 +457,22 @@ y_bert = [LMPredictor_new(valid_embeddings[x], train_embeddings) for x in range(
 # saveJsonDialogues('data/devBERTbaseuncasedDialogues.json')
 
 crowd_y_bert = [LMPredictor_new(crowd_valid_embeddings[x], train_embeddings) for x in range(len(crowd_valid_embeddings))]
+for i in range(3):
+    for n in [1, 2, 5, 10, 20]:
+        print("R@{}: {:g}".format(n, evaluate_recall_thr_star(y_bert, valid_df.WOzAnswers.values, n, thr=0)[i]))
+for k in [1, 2, 5, 10, 14]:
+    print("R_10@{}: {:g}".format(k, evaluate_recall_10_thr(y_bert, valid_df.WOzAnswers.values, k, thr=0)))
+
 print_metrics(y=y_bert, crowd_y=crowd_y_bert, valid_df=valid_df, crowd_valid_df=crowd_valid_df, valid_df_orig=valid_df_orig, crowd_valid_df_orig=crowd_valid_df_orig)
 
 y_tfidf_bert = [list(np.array(tfidf) + np.array(bert)) for tfidf, bert in zip(y_tfidf, y_bert)]
+for i in range(3):
+    for n in [1, 2, 5, 10, 20]:
+        print("R@{}: {:g}".format(n, evaluate_recall_thr_star(y_tfidf_bert, valid_df.WOzAnswers.values, n, thr=0)[i]))
+for k in [1, 2, 5, 10, 14]:
+    print("R_10@{}: {:g}".format(k, evaluate_recall_10_thr(y_tfidf_bert, valid_df.WOzAnswers.values, k, thr=0)))
+
+
 crowd_y_tfidf_bert = [list(np.array(tfidf) + np.array(bert)) for tfidf, bert in zip(crowd_y_tfidf, crowd_y_bert)]
 print_metrics(y=y_tfidf_bert, crowd_y=crowd_y_tfidf_bert, valid_df=valid_df, crowd_valid_df=crowd_valid_df, valid_df_orig=valid_df_orig, crowd_valid_df_orig=crowd_valid_df_orig)
 
